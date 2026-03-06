@@ -1,11 +1,36 @@
+.splash {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: radial-gradient(circle at center, #f5f0e6 0%, #f6f1e9 60%, #ffffff 100%);
+  color: #0f172a;
+  overflow: hidden;
+}
+
+.splash-logo {
+  width: 90vw;
+  height: 90vh;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 28px rgba(15, 23, 42, 0.18));
+}
+
+.splash-title,
+.splash-subtitle {
+  display: none;
+}
+
 :root {
   font-family: "Inter", system-ui, sans-serif;
   color: #0f172a;
-  background-color: #f8fafc;
+  background-color: #f1f5f9;
 }
 
 body {
   margin: 0;
+  background: #f6f1e9;
 }
 
 .container {
@@ -19,14 +44,19 @@ body {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 24px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .card {
   background: #ffffff;
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 20px;
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
   margin-bottom: 16px;
+  border: 1px solid #e2e8f0;
 }
 
 .grid {
@@ -44,13 +74,15 @@ input, select, textarea {
 }
 
 button {
-  background: #2563eb;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
   color: #fff;
   border: none;
-  padding: 10px 14px;
-  border-radius: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.25);
 }
 
 button:disabled {
@@ -61,18 +93,23 @@ button:disabled {
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 6px 12px;
   border-radius: 999px;
-  background: #e2e8f0;
+  background: #e0f2fe;
+  color: #0369a1;
   font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
 }
 
 .result {
   white-space: pre-wrap;
-  background: #f1f5f9;
+  background: #f8fafc;
   padding: 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 13px;
+  border: 1px solid #e2e8f0;
 }
 
 .row {

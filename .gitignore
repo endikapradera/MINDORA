@@ -1,0 +1,15 @@
+# Models
+*.gguf
+models/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+
+# Build outputs
+ui/dist/
+ui/src-tauri/target/

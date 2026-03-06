@@ -13,6 +13,7 @@ import {
 import type { Branch } from "./types";
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchName, setBranchName] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("");
@@ -32,6 +33,11 @@ export default function App() {
 
   useEffect(() => {
     loadBranches();
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 5000);
+    return () => clearTimeout(timer);
   }, []);
 
   async function loadBranches() {
@@ -124,12 +130,22 @@ export default function App() {
     }
   }
 
+  if (showSplash) {
+    return (
+      <div className="splash">
+        <img src="/logo-MINDORA.png" alt="MINDORA" className="splash-logo" />
+        <div className="splash-title">MINDORA</div>
+        <div className="splash-subtitle">MINDORA</div>
+      </div>
+    );
+  }
+
   return (
     <div className="container">
       <div className="header">
         <div>
-          <h1>IA Educativa Offline</h1>
-          <span className="badge">Core local + RAG + Exámenes</span>
+          <h1>MINDORA</h1>
+          <span className="badge">MINDORA</span>
         </div>
         <div className="row">
           <select

@@ -39,6 +39,7 @@ def ingest_document(branch: str, source_path: Path) -> dict:
         session.add(doc)
         session.commit()
         session.refresh(doc)
+        doc_id = doc.id
 
         chunk_rows: list[Chunk] = []
         for idx, chunk in enumerate(chunks):
@@ -60,4 +61,4 @@ def ingest_document(branch: str, source_path: Path) -> dict:
         vectors = embed_texts(chunks)
         add_embeddings(branch, chunk_ids, vectors)
 
-    return {"document_id": doc.id, "chunks": len(chunks)}
+    return {"document_id": int(doc_id or 0), "chunks": len(chunks)}
