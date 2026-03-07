@@ -1,6 +1,7 @@
 # Models
 *.gguf
 models/
+data/
 
 # Python
 __pycache__/
