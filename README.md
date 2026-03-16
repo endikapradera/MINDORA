@@ -13,7 +13,7 @@
 | Plataforma | Descarga | Requisitos |
 |------------|----------|------------|
 | **macOS** (Apple Silicon) | [Releases → .dmg](../../releases) | macOS 12+ |
-| **Windows** (x64) | [Actions → Artifacts](../../actions) | Windows 10/11 x64 |
+| **Windows** (x64) | [Releases → .exe](../../releases) | Windows 10/11 x64 |
 
 ### ⚠️ Modelo LLM — descarga obligatoria (una sola vez, ~4.1 GB)
 
@@ -23,6 +23,28 @@ Antes de arrancar la app por primera vez, coloca este archivo en tu carpeta de D
 - **Windows**: `C:\Users\<tu nombre>\Documents\MINDORA\models\mistral-7b-instruct-v0.2.Q4_K_M.gguf`
 
 Descárgalo de: [HuggingFace — Mistral 7B Instruct Q4_K_M](https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF)
+
+---
+
+## 🚀 Publicar una nueva versión (solo para el desarrollador)
+
+### 1. Obtener el instalador de Windows
+
+1. Ve a **[Actions → Build Windows Installer](../../actions/workflows/build-windows.yml)**
+2. Espera a que el workflow termine con ✅ (~20-30 min la primera vez)
+3. Entra al workflow completado → sección **Artifacts** → descarga `MINDORA-Windows-xxxx.exe`
+
+### 2. Publicar el Release en GitHub
+
+1. Ve a **[Releases → Create a new release](../../releases/new)**
+2. Pon el tag de versión: `v1.0.0`
+3. Escribe el título: `MINDORA v1.0.0`
+4. Adjunta los dos archivos:
+   - `MINDORA_1.0.0_aarch64.dmg` (macOS — generado con `./build.sh` en tu Mac)
+   - `MINDORA_1.0.0_x64-setup.exe` (Windows — descargado de Actions en el paso anterior)
+5. Publica el release
+
+Desde ese momento cualquier usuario puede ir a la página de Releases y descargar el instalador de su plataforma.
 
 ---
 
