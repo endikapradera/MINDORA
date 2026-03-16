@@ -136,6 +136,36 @@ MINDORA/
 
 ---
 
+## 💡 Idea de negocio: por qué MINDORA tiene potencial
+
+MINDORA nace para resolver un problema real: estudiar con IA sin exponer datos personales ni depender de internet.
+
+### Propuesta de valor
+
+- **100% offline**: los apuntes y preguntas no salen del equipo del usuario.
+- **Privacidad por diseño**: ideal para estudiantes, centros educativos y organizaciones con datos sensibles.
+- **Especialización educativa**: no es un chat generalista; está centrada en temarios, estudio y evaluación.
+- **Flujo completo en una sola app**: ingesta de documentos, RAG, simulacros y generación de exámenes.
+
+### Por qué es una oportunidad
+
+- Las plataformas grandes priorizan la nube y el uso masivo.
+- MINDORA se posiciona en un nicho creciente: **IA local aplicada a educación**.
+- La tecnología reciente (GGUF, cuantización, llama.cpp, embeddings locales) permite ofrecer buena experiencia en hardware de usuario.
+
+### Ventaja competitiva
+
+MINDORA combina funcionalidades que normalmente están separadas:
+
+1. Tutor IA sobre documentos propios.
+2. Generación de exámenes y solucionarios.
+3. Simulacros evaluables con histórico de progreso.
+4. Todo funcionando en local y con control de datos.
+
+En resumen: puede posicionarse como **“asistente académico offline”** para estudiantes, opositores, academias y universidades.
+
+---
+
 ## 📄 Licencia
 
 Consulta el archivo [LICENSE](LICENSE) para más información.
