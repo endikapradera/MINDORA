@@ -1,0 +1,154 @@
+name: Build Windows Installer
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Triggers:
+#   • workflow_dispatch → launch manually from the GitHub Actions tab
+#   • push to main      → auto-build on every push (remove if too slow)
+# ──────────────────────────────────────────────────────────────────────────────
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "core/**"
+      - "ui/**"
+      - ".github/workflows/build-windows.yml"
+
+jobs:
+  build-windows:
+    name: Build MINDORA for Windows (x64)
+    runs-on: windows-latest   # Windows Server 2022, x86-64, MSVC pre-installed
+
+    steps:
+      # ── 1. Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python setup ─────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('core/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies + PyInstaller
+        run: |
+          cd core
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── 3. Embedding model ───────────────────────────────────────────────────
+      #    Downloads all-MiniLM-L6-v2 (~87 MB) to HuggingFace cache,
+      #    then copies it to core/assets/embedding_model/ so PyInstaller bundles it.
+      - name: Download embedding model
+        run: |
+          python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
+      - name: Copy embedding model to assets/
+        shell: pwsh
+        run: |
+          $cacheBase = "$env:USERPROFILE\.cache\huggingface\hub\models--sentence-transformers--all-MiniLM-L6-v2"
+          $snapHash  = (Get-Content "$cacheBase\refs\main").Trim()
+          $snapDir   = "$cacheBase\snapshots\$snapHash"
+          $destDir   = "core\assets\embedding_model"
+          New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+          Copy-Item -Path "$snapDir\*" -Destination $destDir -Recurse -Force
+          Write-Host "✅ Embedding model ready at $destDir"
+          Get-ChildItem $destDir | Measure-Object | Select-Object -ExpandProperty Count | ForEach-Object { Write-Host "   $_ files" }
+
+      # ── 4. Build Python backend ──────────────────────────────────────────────
+      - name: Build backend with PyInstaller (Windows spec)
+        run: |
+          cd core
+          python -m PyInstaller pyinstaller_windows.spec --clean --noconfirm
+
+      - name: Verify backend build
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "core\dist\IA_Core\IA_Core.exe")) {
+            Write-Error "❌ PyInstaller failed — IA_Core.exe not found"
+            exit 1
+          }
+          $size = (Get-Item "core\dist\IA_Core\IA_Core.exe").Length / 1MB
+          Write-Host "✅ IA_Core.exe built ($([math]::Round($size,1)) MB)"
+
+      # ── 5. Node.js setup ─────────────────────────────────────────────────────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+
+      # ── 6. Rust setup ────────────────────────────────────────────────────────
+      - name: Set up Rust (stable, MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ui/src-tauri -> target
+
+      # ── 7. Build Tauri frontend + package ────────────────────────────────────
+      - name: Install frontend dependencies
+        run: |
+          cd ui
+          npm ci
+
+      - name: Build Tauri app (NSIS installer)
+        run: |
+          cd ui
+          npm run tauri build -- --bundles nsis
+        env:
+          # Tauri needs this to find WebView2 on Windows CI runners
+          WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+
+      # ── 8. Upload artifact ───────────────────────────────────────────────────
+      - name: Find installer path
+        id: find_installer
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "ui\src-tauri\target\release\bundle\nsis" -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) {
+            Write-Error "❌ No .exe installer found in bundle/nsis/"
+            exit 1
+          }
+          $sizeMB = [math]::Round($exe.Length / 1MB, 1)
+          Write-Host "✅ Installer: $($exe.Name) ($sizeMB MB)"
+          echo "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          echo "name=$($exe.Name)"     >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows installer as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MINDORA-Windows-${{ github.sha }}
+          path: ${{ steps.find_installer.outputs.path }}
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── 9. Summary ───────────────────────────────────────────────────────────
+      - name: Build summary
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host "╔══════════════════════════════════════════════════╗"
+          Write-Host "║        ✅ MINDORA Windows build complete!        ║"
+          Write-Host "╚══════════════════════════════════════════════════╝"
+          Write-Host ""
+          Write-Host "Installer: ${{ steps.find_installer.outputs.name }}"
+          Write-Host "Download the artifact from the GitHub Actions tab."
+          Write-Host ""
+          Write-Host "⚠️  Reminder: end-users must place the LLM model at:"
+          Write-Host "   C:\Users\<name>\Documents\MINDORA\models\"
+          Write-Host "   Model: mistral-7b-instruct-v0.2.Q4_K_M.gguf (~4.1 GB)"
+          Write-Host "   https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF"

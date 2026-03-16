@@ -2,9 +2,13 @@ from pathlib import Path
 import tempfile
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from sqlmodel import select
 
 from app.schemas.documents import IngestResponse
+from app.schemas.documents_list import DocumentListResponse, DocumentItem
 from app.services.ingest import ingest_document
+from app.storage.database import get_session
+from app.storage.models import Document
 
 router = APIRouter()
 
@@ -26,3 +30,16 @@ def ingest(branch: str = Form(...), file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Branch not found")
+
+
+@router.get("", response_model=DocumentListResponse)
+def list_documents(branch: str):
+    with get_session(branch) as session:
+        rows = session.exec(select(Document).where(Document.branch == branch)).all()
+    return DocumentListResponse(
+        documents=[
+            DocumentItem(id=row.id, filename=row.filename, path=row.path, created_at=row.created_at)
+            for row in rows
+            if row.id is not None
+        ]
+    )

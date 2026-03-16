@@ -17,6 +17,19 @@ def branch_exists(branch: str) -> bool:
     return get_branch_path(branch).exists()
 
 
+def delete_branch(branch: str) -> None:
+    branch_path = get_branch_path(branch)
+    if not branch_path.exists():
+        raise FileNotFoundError()
+    for item in branch_path.rglob("*"):
+        if item.is_file():
+            item.unlink()
+    for item in sorted(branch_path.rglob("*"), reverse=True):
+        if item.is_dir():
+            item.rmdir()
+    branch_path.rmdir()
+
+
 def list_branches() -> list[BranchResponse]:
     root = _branches_root()
     if not root.exists():

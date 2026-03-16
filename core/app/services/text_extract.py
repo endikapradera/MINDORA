@@ -5,6 +5,8 @@ from pathlib import Path
 from docx import Document as DocxDocument
 from pptx import Presentation
 from pypdf import PdfReader
+from PIL import Image
+import pytesseract
 
 
 def extract_text_from_file(path: Path) -> str:
@@ -15,6 +17,8 @@ def extract_text_from_file(path: Path) -> str:
         return _extract_docx(path)
     if suffix == ".pptx":
         return _extract_pptx(path)
+    if suffix in {".png", ".jpg", ".jpeg", ".bmp", ".tiff"}:
+        return _extract_image(path)
     if suffix in {".txt", ".md"}:
         return path.read_text(encoding="utf-8", errors="ignore")
     raise ValueError("Unsupported file type")
@@ -45,3 +49,13 @@ def _extract_pptx(path: Path) -> str:
                 if text:
                     parts.append(text)
     return "\n".join(parts)
+
+
+def _extract_image(path: Path) -> str:
+    try:
+        with Image.open(path) as img:
+            return pytesseract.image_to_string(img, lang="spa+eng")
+    except pytesseract.TesseractNotFoundError as exc:
+        raise ValueError(
+            "Tesseract OCR no está instalado en el sistema. Instálalo para procesar imágenes."
+        ) from exc

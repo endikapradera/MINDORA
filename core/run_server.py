@@ -1,17 +1,74 @@
 from __future__ import annotations
 
+import glob
 import os
+import sys
+from pathlib import Path
+from typing import Optional
 
 import uvicorn
 
 
+def _resource_path(relative: str) -> Path:
+    """Return path to a bundled resource, works both frozen and unfrozen."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / relative  # type: ignore[attr-defined]
+    return Path(__file__).parent / relative
+
+
+def _find_llm_model() -> Optional[str]:
+    """
+    Search for a .gguf model file in standard locations.
+    Priority:
+      1. IA_OFFLINE_LLM_PATH env var (already set → use it)
+      2. ~/Documents/MINDORA/models/
+      3. ~/Desktop/MINDORA/models/ (legacy)
+      4. Same directory as the executable
+    """
+    if os.getenv("IA_OFFLINE_LLM_PATH"):
+        return os.environ["IA_OFFLINE_LLM_PATH"]
+
+    home = Path.home()
+    search_dirs = [
+        home / "Documents" / "MINDORA" / "models",
+        home / "Desktop" / "MINDORA" / "models",
+        home / "Desktop" / "MINDORA" / "MINDORA" / "models",
+        Path(sys.executable).parent,
+    ]
+    for d in search_dirs:
+        hits = sorted(glob.glob(str(d / "*.gguf")))
+        if hits:
+            return hits[0]
+    return None
+
+
 def main() -> None:
+    # ── Thread / compatibility env vars ──────────────────────────────────
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
     os.environ.setdefault("MKL_SERVICE_FORCE_INTEL", "1")
+
+    # ── Bundled embedding model (PyInstaller only) ────────────────────────
+    if getattr(sys, "frozen", False):
+        bundled_emb = _resource_path("embedding_model")
+        if bundled_emb.exists():
+            os.environ["IA_OFFLINE_EMBEDDINGS_MODEL"] = str(bundled_emb)
+
+    # ── Auto-discover LLM model ───────────────────────────────────────────
+    model_path = _find_llm_model()
+    if model_path:
+        os.environ["IA_OFFLINE_LLM_PATH"] = model_path
+        print(f"[MINDORA] LLM model: {model_path}", flush=True)
+    else:
+        print("[MINDORA] WARNING: No .gguf model found. "
+              "Place your model in ~/Documents/MINDORA/models/", flush=True)
+        # Still start the server — endpoints will return a clear error
+        os.environ.setdefault("IA_OFFLINE_LLM_PATH", "__not_found__")
+
     host = os.getenv("IA_OFFLINE_HOST", "127.0.0.1")
     port = int(os.getenv("IA_OFFLINE_PORT", "8000"))
-    uvicorn.run("app.main:app", host=host, port=port, reload=False)
+    print(f"[MINDORA] Starting backend on {host}:{port}", flush=True)
+    uvicorn.run("app.main:app", host=host, port=port, reload=False, log_level="warning")
 
 
 if __name__ == "__main__":
