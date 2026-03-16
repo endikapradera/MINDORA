@@ -622,8 +622,8 @@ export default function App() {
   if (showSplash) {
     return (
       <div className="splash">
-        <img src="/logo-MINDORA.png" alt="MINDORA" className="splash-logo" />
-        <div className="splash-title">MINDORA</div>
+        <img src="/logo-byendika.png" alt="Logo by Endika" className="splash-logo" />
+        <div className="splash-title">ENDIKA PRADERA</div>
         <div className="splash-subtitle">MINDORA</div>
       </div>
     );
@@ -652,6 +652,8 @@ export default function App() {
         <div className="sidebar-tip">
           Flujo recomendado: Temarios → Estudiar → Exámenes → Progreso.
         </div>
+
+        <div className="sidebar-footer-credit">Developed by ENDIKA PRADERA</div>
       </aside>
 
       <div className="container">
