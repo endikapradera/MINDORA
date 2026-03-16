@@ -1,6 +1,6 @@
-# MINDORA — IA Educativa Offline
+# MINDORA — IA Educativa Offline ( EN DESARROLLO ) 
 
-> Aplicación de escritorio para profesores: sube apuntes, genera exámenes, responde preguntas y tutoriza alumnos. Todo funciona **sin internet** una vez instalada.
+> Aplicación de escritorio para USO ESTUDIANTIL GRATUITO: sube apuntes, genera exámenes, responde preguntas y tutoriza alumnos. Todo funciona **sin internet** una vez instalada.
 
 <p align="center">
   <img src="logo-MINDORA.png" alt="MINDORA Logo" width="300"/>
