@@ -14,6 +14,56 @@ from app.services.style_preferences import recommend_style
 _LLM_INSTANCE: Llama | None = None
 _LLM_LOCK = threading.Lock()
 
+# ---------------------------------------------------------------------------
+# Anti-robot postprocessing
+# ---------------------------------------------------------------------------
+_ROBOT_PATTERNS: list[re.Pattern] = [
+    re.compile(r"como (?:se ha |hemos |ya |antes )mencionado(?: anteriormente)?,?\s*", re.I),
+    re.compile(r"es (?:muy )?importante (?:destacar|mencionar|se\u00f1alar|recordar) que\s*", re.I),
+    re.compile(r"en (?:conclusi\u00f3n|resumen),?\s+como (?:se puede|hemos|se ha) (?:ver|observar|visto),?\s*", re.I),
+    re.compile(r"(?:sin duda(?:lguna)?|indudablemente|evidentemente),?\s*", re.I),
+    re.compile(r"(?:cabe|es necesario|resulta importante) (?:destacar|mencionar|se\u00f1alar|recordar) que\s*", re.I),
+    re.compile(r"a modo de (?:resumen|conclusi\u00f3n|cierre),?\s*", re.I),
+    re.compile(r"(?:dicho esto|teniendo esto en cuenta|en este sentido),?\s*", re.I),
+    re.compile(r"(?:tal y como|tal como) (?:hemos visto|se ha indicado|se puede ver),?\s*", re.I),
+    re.compile(r"hay que (?:tener en cuenta|destacar|recordar) que\s*", re.I),
+    re.compile(r"como (?:podemos|puedes) (?:ver|observar),?\s*", re.I),
+    re.compile(r"es de destacar que\s*", re.I),
+    re.compile(r"(?:finalmente|por \u00faltimo)[,.]?\s+cabe (?:decir|mencionar|a\u00f1adir)\s*", re.I),
+]
+
+# ---------------------------------------------------------------------------
+# Few-shot style examples (short, embedded in prompts)
+# ---------------------------------------------------------------------------
+_FEW_SHOT_EXAMPLES: dict[str, str] = {
+    "examen": (
+        "Ejemplo de respuesta en MODO EXAMEN (imita este formato):\n"
+        "1. Definici\u00f3n: La fotoS\u00edntesis es el proceso por el que las plantas convierten CO\u2082 y H\u2082O en glucosa mediante luz solar.\n"
+        "2. Fases: Fase luminosa (cloroplastos, ATP) y Fase oscura (ciclo de Calvin, fijaci\u00f3n de CO\u2082).\n"
+        "3. F\u00f3rmula: 6CO\u2082 + 6H\u2082O \u2192 C\u2086H\u2081\u2082O\u2086 + 6O\u2082\n"
+        "Resumen: proceso an\u00e1bolo de producci\u00f3n de energ\u00eda en vegetales. [FUENTE 1]\n"
+    ),
+    "profesor": (
+        "Ejemplo de respuesta en MODO PROFESOR (imita este formato):\n"
+        "Introducci\u00f3n: Hoy vamos a entender qu\u00e9 es la fotoS\u00edntesis y por qu\u00e9 es fundamental.\n"
+        "Desarrollo: Las plantas captan luz con la clorofila y la usan para transformar CO\u2082 y agua en glucosa.\n"
+        "Ejemplo guiado: Una planta en una ventana soleada capta luz \u2192 produce az\u00facar \u2192 crece.\n"
+        "Error frecuente: confundir fotoS\u00edntesis (fabrica glucosa) con respiraci\u00f3n celular (la consume).\n"
+        "Pregunta de comprobaci\u00f3n: \u00bfQu\u00e9 pasar\u00eda si la planta no tuviera luz una semana?\n"
+    ),
+    "companero": (
+        "Ejemplo de respuesta en MODO COMPA\u00d1ERO (imita este formato):\n"
+        "Te lo explico f\u00e1cil: la fotoS\u00edntesis es c\u00f3mo las plantas se hacen su propia comida con luz solar.\n"
+        "- Toman CO\u2082 del aire y agua del suelo.\n"
+        "- Con la luz lo convierten en glucosa (su 'combustible').\n"
+        "Regla r\u00e1pida: 'Luz + CO\u2082 + H\u2082O \u2192 az\u00facar + ox\u00edgeno'. \u00a1Simple!\n"
+    ),
+    "corta": (
+        "Ejemplo de respuesta CORTA (imita este formato):\n"
+        "La fotoS\u00edntesis convierte CO\u2082, H\u2082O y luz solar en glucosa y ox\u00edgeno en los cloroplastos. [FUENTE 1]\n"
+    ),
+}
+
 
 def _bool_env(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -176,6 +226,62 @@ def _style_from_selector(style: Literal["auto", "corta", "detallada", "pasos", "
     return None
 
 
+def _remove_incomplete_tail(text: str) -> str:
+    """Remove last sentence if it looks cut off (no ending punctuation)."""
+    stripped = text.rstrip()
+    if not stripped:
+        return stripped
+    if stripped[-1] not in ".!?\u2026\u00bb]":
+        last_punct = max(stripped.rfind("."), stripped.rfind("!"), stripped.rfind("?"))
+        if last_punct > len(stripped) // 2:
+            return stripped[: last_punct + 1]
+    return stripped
+
+
+def _postprocess_answer(text: str, style: str) -> str:
+    """Remove robotic filler, deduplicate, fix tail, enforce style constraints."""
+    # 1. Strip robotic filler phrases
+    for pattern in _ROBOT_PATTERNS:
+        text = pattern.sub("", text)
+
+    # 2. Collapse extra spaces created by removals
+    text = re.sub(r"  +", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # 3. Deduplicate lines
+    text = _dedupe_lines(text)
+
+    # 4. Remove trailing incomplete sentence
+    text = _remove_incomplete_tail(text)
+
+    # 5. Style-specific constraints
+    if style == "corta":
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        text = "\n".join(lines[:7])
+
+    elif style == "companero":
+        # If response starts very formally, soften opening
+        if re.match(r"^(La |El |Se |Los |Las )", text):
+            text = "Te lo cuento: " + text[0].lower() + text[1:]
+
+    elif style == "examen":
+        # Convert bullet list to numbered list for exam style
+        if re.match(r"^[-\u2022]\s", text.lstrip()):
+            lines = text.splitlines()
+            converted: list[str] = []
+            counter = 1
+            for line in lines:
+                stripped_line = line.strip()
+                if re.match(r"^[-\u2022]\s", stripped_line):
+                    converted.append(f"{counter}. " + stripped_line[2:].strip())
+                    counter += 1
+                else:
+                    converted.append(line)
+            text = "\n".join(converted)
+
+    return text.strip()
+
+
 def _split_sentences(text: str) -> list[str]:
     parts = re.split(r"(?<=[\.!?])\s+", re.sub(r"\s+", " ", text).strip())
     return [p.strip() for p in parts if p.strip()]
@@ -226,19 +332,25 @@ def generate_answer_fallback(
 
     if wants_short:
         selected = ranked[:3]
-        return "\n".join(f"- {s}" for s in selected)
+        result = "\n".join(f"- {s}" for s in selected)
+        return _postprocess_answer(result, "corta")
 
     if wants_steps:
         selected = ranked[:4]
-        return "\n".join(f"{i + 1}) {s}" for i, s in enumerate(selected))
+        result = "\n".join(f"{i + 1}) {s}" for i, s in enumerate(selected))
+        return _postprocess_answer(result, response_style)
 
     if response_style == "examen":
         selected = ranked[:4]
-        return "\n".join(f"{i + 1}. {s}" for i, s in enumerate(selected)) + "\n\nConclusión (examen): idea central del tema y aplicación directa."
+        result = (
+            "\n".join(f"{i + 1}. {s}" for i, s in enumerate(selected))
+            + "\n\nConclusión: idea central del tema y aplicación directa."
+        )
+        return _postprocess_answer(result, "examen")
 
     if response_style == "profesor":
         selected = ranked[:4]
-        return "\n".join(
+        result = "\n".join(
             [
                 "Introducción:",
                 selected[0] if selected else "",
@@ -250,13 +362,16 @@ def generate_answer_fallback(
                 selected[3] if len(selected) > 3 else "",
             ]
         ).strip()
+        return _postprocess_answer(result, "profesor")
 
     if response_style == "companero":
         selected = ranked[:3]
-        return "Te lo explico fácil:\n- " + "\n- ".join(selected)
+        result = "Te lo explico f\u00e1cil:\n- " + "\n- ".join(selected)
+        return _postprocess_answer(result, response_style)
 
     selected = ranked[:5]
-    return "\n".join(selected)
+    result = "\n".join(selected)
+    return _postprocess_answer(result, response_style)
 
 
 def generate_text(prompt: str, max_tokens: int = 400, temperature: float = 0.2, stop: Sequence[str] | None = None) -> str:
@@ -327,21 +442,27 @@ def generate_answer(
         if turns:
             history_block = "\n\nHistorial reciente:\n" + "\n".join(turns)
 
+    few_shot = _FEW_SHOT_EXAMPLES.get(effective_style, "")
+    few_shot_block = f"\n{few_shot}\n" if few_shot else ""
+
     prompt = (
         "Eres MINDORA, una IA educativa offline experta en explicar temarios.\n"
         "Reglas estrictas:\n"
-        "- Responde SOLO con la información del contexto recuperado.\n"
+        "- Responde SOLO con la informaci\u00f3n del contexto recuperado.\n"
         "- No inventes datos, leyes, fechas o definiciones.\n"
-        "- Si falta información, dilo explícitamente.\n"
-        "- Escribe en español claro, estructurado y natural.\n"
-        "- Incluye al menos un ejemplo práctico cuando sea posible.\n"
+        "- Si falta informaci\u00f3n, dilo expl\u00edcitamente.\n"
+        "- Escribe en espa\u00f1ol claro, estructurado y natural.\n"
+        "- Incluye al menos un ejemplo pr\u00e1ctico cuando sea posible.\n"
+        "- Evita frases rob\u00f3ticas y repetitivas; escribe como una persona.\n"
         "- Cita al final las fuentes usadas usando etiquetas [FUENTE n] del contexto.\n"
-        f"Intención detectada del usuario: {detected_intent}.\n"
-        f"Formato de respuesta:\n{style_rules}\n\n"
+        f"Intenci\u00f3n detectada del usuario: {detected_intent}.\n"
+        f"Formato de respuesta:\n{style_rules}\n"
+        f"{few_shot_block}\n"
         f"Contexto:\n{context_block}\n\n"
         f"{history_block}\n\n"
         f"Pregunta: {question}\n"
         "Respuesta:"
     )
     raw = generate_text(prompt, max_tokens=max_tokens, temperature=0.15, stop=["\n\nPregunta:"])
-    return _dedupe_lines(raw)
+    cleaned = _dedupe_lines(raw)
+    return _postprocess_answer(cleaned, effective_style)
