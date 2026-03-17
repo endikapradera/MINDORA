@@ -4,11 +4,13 @@ import os
 import re
 import threading
 import sys
+from pathlib import Path
 from typing import Sequence, Literal
 
 from llama_cpp import Llama
 from app.services.intent_dictionary import detect_intent_and_style
 from app.services.style_preferences import recommend_style
+from app.storage.config import get_base_dir
 
 
 _LLM_INSTANCE: Llama | None = None
@@ -86,6 +88,27 @@ def _model_path() -> str:
     return path
 
 
+def _lora_adapter_path() -> str | None:
+    if os.getenv("IA_OFFLINE_DISABLE_LORA") is not None and _bool_env("IA_OFFLINE_DISABLE_LORA"):
+        return None
+
+    env_path = os.getenv("IA_OFFLINE_LORA_ADAPTER_PATH")
+    if env_path:
+        p = Path(env_path).expanduser().resolve()
+        if p.exists() and p.is_file():
+            return str(p)
+
+    ft_dir = get_base_dir() / "fine_tuning"
+    candidates = [
+        ft_dir / "llama_cpp_adapter.gguf",
+        ft_dir / "lora_adapter.gguf",
+    ]
+    for c in candidates:
+        if c.exists() and c.is_file():
+            return str(c)
+    return None
+
+
 def get_llm() -> Llama:
     global _LLM_INSTANCE
     if _LLM_INSTANCE is not None:
@@ -100,13 +123,23 @@ def get_llm() -> Llama:
         n_threads = int(os.getenv("IA_OFFLINE_LLM_THREADS", "1"))
         n_batch = int(os.getenv("IA_OFFLINE_LLM_BATCH", "128"))
 
-        _LLM_INSTANCE = Llama(
-            model_path=path,
-            n_ctx=n_ctx,
-            n_threads=n_threads,
-            n_batch=n_batch,
-            verbose=False,
-        )
+        llama_kwargs: dict = {
+            "model_path": path,
+            "n_ctx": n_ctx,
+            "n_threads": n_threads,
+            "n_batch": n_batch,
+            "verbose": False,
+        }
+        adapter = _lora_adapter_path()
+        if adapter:
+            llama_kwargs["lora_path"] = adapter
+
+        try:
+            _LLM_INSTANCE = Llama(**llama_kwargs)
+        except TypeError:
+            # Backward-compatible fallback for llama_cpp versions without lora_path.
+            llama_kwargs.pop("lora_path", None)
+            _LLM_INSTANCE = Llama(**llama_kwargs)
         return _LLM_INSTANCE
 
 

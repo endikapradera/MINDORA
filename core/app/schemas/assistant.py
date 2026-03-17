@@ -32,6 +32,8 @@ class FineTuneStatusResponse(BaseModel):
     min_required: int
     style_distribution: dict[str, int]
     dataset_path: str
+    runtime_adapter_exists: bool = False
+    runtime_adapter_path: str = ""
 
 
 class FineTuneExportResponse(BaseModel):
@@ -40,3 +42,5 @@ class FineTuneExportResponse(BaseModel):
     ready: bool
     min_required: int
     style_distribution: dict[str, int]
+    runtime_adapter_exists: bool = False
+    runtime_adapter_path: str = ""

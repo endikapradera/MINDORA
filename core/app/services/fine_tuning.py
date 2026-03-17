@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter
 from pathlib import Path
 
@@ -23,6 +24,29 @@ def _approved_examples_path() -> Path:
 
 def _dataset_path() -> Path:
     return _ft_dir() / "lora_dataset.jsonl"
+
+
+def _runtime_adapter_candidates() -> list[Path]:
+    env_raw = (os.getenv("IA_OFFLINE_LORA_ADAPTER_PATH") or "").strip()
+    env_path = Path(env_raw).expanduser() if env_raw else None
+    base_candidates = [
+        _ft_dir() / "llama_cpp_adapter.gguf",
+        _ft_dir() / "lora_adapter.gguf",
+    ]
+    return ([env_path.resolve()] if env_path else []) + base_candidates
+
+
+def _runtime_adapter_info() -> dict:
+    for p in _runtime_adapter_candidates():
+        if p.exists() and p.is_file():
+            return {
+                "runtime_adapter_exists": True,
+                "runtime_adapter_path": str(p),
+            }
+    return {
+        "runtime_adapter_exists": False,
+        "runtime_adapter_path": str((_ft_dir() / "llama_cpp_adapter.gguf").resolve()),
+    }
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -147,6 +171,7 @@ def export_lora_dataset(include_chats: bool = True) -> dict:
         "ready": ready,
         "min_required": READY_MIN_EXAMPLES,
         "style_distribution": dict(style_counter),
+        **_runtime_adapter_info(),
     }
 
 
@@ -160,4 +185,5 @@ def get_fine_tune_status() -> dict:
         "min_required": READY_MIN_EXAMPLES,
         "style_distribution": dict(style_counter),
         "dataset_path": str(_dataset_path()),
+        **_runtime_adapter_info(),
     }
