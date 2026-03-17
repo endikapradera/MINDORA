@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from sqlmodel import select
 
-from app.services.chunking import chunk_text
+from app.services.chunking import chunk_text_with_metadata
 from app.services.embeddings import embed_texts
 from app.services.index import add_embeddings
 from app.services.text_extract import extract_text_from_file
@@ -26,7 +27,8 @@ def ingest_document(branch: str, source_path: Path) -> dict:
         target_path.write_bytes(source_path.read_bytes())
 
     text = extract_text_from_file(target_path)
-    chunks = chunk_text(text)
+    structured_chunks = chunk_text_with_metadata(text, subject=branch, source=target_path.name)
+    chunks = [item["text"] for item in structured_chunks]
 
     with get_session(branch) as session:
         existing = session.exec(
@@ -43,13 +45,14 @@ def ingest_document(branch: str, source_path: Path) -> dict:
 
         chunk_rows: list[Chunk] = []
         for idx, chunk in enumerate(chunks):
+            metadata = structured_chunks[idx]["metadata"] if idx < len(structured_chunks) else {}
             chunk_rows.append(
                 Chunk(
                     document_id=doc.id,
                     branch=branch,
                     chunk_index=idx,
                     text=chunk,
-                    metadata_json="{}",
+                    metadata_json=json.dumps(metadata, ensure_ascii=False),
                 )
             )
         session.add_all(chunk_rows)

@@ -209,11 +209,28 @@ def ask(payload: AskRequest, branch: str):
                 results = alt_results
                 break
 
-    contexts = [r["text"] for r in results]
-    sources = [
-        f"{r.get('filename', 'documento')} (chunk {r.get('chunk_index', 0)})"
-        for r in results
-    ]
+    contexts = []
+    for i, r in enumerate(results, start=1):
+        filename = r.get("filename", "documento")
+        page = int(r.get("pagina", 0) or 0)
+        tema = r.get("tema", "Tema general")
+        header = f"[FUENTE {i}] {filename}"
+        if page > 0:
+            header += f" | p.{page}"
+        if tema:
+            header += f" | {tema}"
+        contexts.append(f"{header}\n{r['text']}")
+    sources = []
+    for r in results:
+        filename = r.get("filename", "documento")
+        chunk_index = r.get("chunk_index", 0)
+        page = int(r.get("pagina", 0) or 0)
+        tema = r.get("tema", "Tema general")
+        content_type = r.get("tipo_contenido", "teoria")
+        if page > 0:
+            sources.append(f"{filename} (p.{page}, chunk {chunk_index}, {content_type}, {tema})")
+        else:
+            sources.append(f"{filename} (chunk {chunk_index}, {content_type}, {tema})")
     if not contexts:
         return AskResponse(
             answer=(

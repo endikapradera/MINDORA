@@ -27,10 +27,10 @@ def extract_text_from_file(path: Path) -> str:
 def _extract_pdf(path: Path) -> str:
     reader = PdfReader(str(path))
     parts: list[str] = []
-    for page in reader.pages:
+    for i, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
         if text:
-            parts.append(text)
+            parts.append(f"[PAGE {i}]\n{text}")
     return "\n".join(parts)
 
 
@@ -42,12 +42,15 @@ def _extract_docx(path: Path) -> str:
 def _extract_pptx(path: Path) -> str:
     prs = Presentation(str(path))
     parts: list[str] = []
-    for slide in prs.slides:
+    for i, slide in enumerate(prs.slides, start=1):
+        slide_parts: list[str] = []
         for shape in slide.shapes:
             if hasattr(shape, "text"):
                 text = shape.text.strip()
                 if text:
-                    parts.append(text)
+                    slide_parts.append(text)
+        if slide_parts:
+            parts.append(f"[SLIDE {i}]\n" + "\n".join(slide_parts))
     return "\n".join(parts)
 
 

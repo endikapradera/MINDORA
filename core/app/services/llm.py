@@ -73,9 +73,14 @@ def build_prompt(question: str, contexts: list[str]) -> str:
             style_rules, _ = selected
     context_block = "\n\n".join(contexts)
     return (
-        "Eres MINDORA, una IA educativa offline. Responde SOLO con la información del contexto. "
-        "Si falta información, indícalo claramente.\n"
-        "Responde en español, con lenguaje sencillo y sin repetir frases.\n"
+        "Eres MINDORA, una IA educativa offline experta en explicar temarios.\n"
+        "Reglas estrictas:\n"
+        "- Responde SOLO con la información del contexto recuperado.\n"
+        "- No inventes datos, leyes, fechas o definiciones.\n"
+        "- Si falta información, dilo explícitamente.\n"
+        "- Escribe en español claro, estructurado y natural.\n"
+        "- Incluye al menos un ejemplo práctico cuando sea posible.\n"
+        "- Cita al final las fuentes usadas usando etiquetas [FUENTE n] del contexto.\n"
         f"Intención detectada del usuario: {detected_intent}.\n"
         f"Formato de respuesta:\n{style_rules}\n\n"
         f"Contexto:\n{context_block}\n\n"
@@ -269,9 +274,14 @@ def generate_answer(
             history_block = "\n\nHistorial reciente:\n" + "\n".join(turns)
 
     prompt = (
-        "Eres MINDORA, una IA educativa offline. Responde SOLO con la información del contexto. "
-        "Si falta información, indícalo claramente.\n"
-        "Responde en español, con lenguaje sencillo y sin repetir frases.\n"
+        "Eres MINDORA, una IA educativa offline experta en explicar temarios.\n"
+        "Reglas estrictas:\n"
+        "- Responde SOLO con la información del contexto recuperado.\n"
+        "- No inventes datos, leyes, fechas o definiciones.\n"
+        "- Si falta información, dilo explícitamente.\n"
+        "- Escribe en español claro, estructurado y natural.\n"
+        "- Incluye al menos un ejemplo práctico cuando sea posible.\n"
+        "- Cita al final las fuentes usadas usando etiquetas [FUENTE n] del contexto.\n"
         f"Intención detectada del usuario: {detected_intent}.\n"
         f"Formato de respuesta:\n{style_rules}\n\n"
         f"Contexto:\n{context_block}\n\n"
