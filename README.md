@@ -8,7 +8,52 @@
 
 ---
 
-## 📦 Descargar e instalar (usuarios finales)
+## � Últimas incorporaciones
+
+### 🐛 Hotfix — Arranque de app (Mar 2026)
+- **Corregido cuelgue al iniciar**: el bucle de polling de salud (`/health`) tenía bloques `try-catch` mal anidados que dejaban la app colgada indefinitamente en la pantalla de carga.  
+  Reescrito con estructura correcta: máx. 50 intentos × 1.2 s (~60 s de timeout), salida limpia tanto en éxito como en fallo.
+
+### ✅ Banco de tests — 108 pruebas automatizadas (Mar 2026)
+- **Fixtures educativos reales**: temarios de matemáticas, programación y física en `core/tests/fixtures/` para pruebas con contenido real.
+- **50 nuevos tests de integración** (`core/tests/test_integration.py`):
+  - `TestBranchCRUD` (9): crear, listar y eliminar ramas con validación de errores.
+  - `TestTextExtraction` (8): extracción y chunking de los tres temarios.
+  - `TestDocumentIngest` (5): ingestión con embeddings y FAISS mockeados.
+  - `TestExamGeneration` (6): generación de exámenes por materia.
+  - `TestExamValidator` (6): validador de distractores y *confidence scoring*.
+  - `TestFullLifecycle` (1): ciclo completo rama → ingestión → examen → simulacro → borrado.
+  - `TestErrorValidation` (6): manejo de errores e inputs inválidos.
+  - `TestBancoPreguntas` (9): banco de preguntas sobre matemáticas, programación y física.
+
+### 🎨 Validación inline en formularios (Mar 2026)
+- Sustituidos los mensajes de estado tipo *badge* por **validación inline por campo**: `branchNameError`, `fileError`, `questionError`, `examTopicError`, `learnPhraseError`.
+- Añadido sistema de **toast de notificaciones** (`showToast`) para confirmaciones y errores importantes, en lugar de la tarjeta de "Estado" permanente.
+- Nuevos estilos `.field-error`, `.input-error` y `.toast-notification` en `styles.css`.
+
+### 🧠 Fase 5 — Fine-tuning LoRA (Feb 2026)
+- Pipeline de dataset LoRA con ejemplos aprobados y exportación.
+- Script `train_lora.py` con dependencias de fine-tuning.
+- Autoload del adaptador LoRA en inferencia + estado de runtime visible en la UI.
+
+### 📷 Fase 3 — OCR automático (Feb 2026)
+- OCR automático en PDFs escaneados con **PyMuPDF + Tesseract**.
+- Extracción de imágenes embebidas en documentos.
+
+### 🤖 Fase 2 — Mejoras de respuesta (Feb 2026)
+- Postproceso anti-robot: las respuestas no parecen generadas por máquina.
+- *Few-shot templates* por modo de respuesta en `llm.py`.
+- Nuevos modos: `profesor`, `compañero`, `examen`, `pasos`, `corta`, `detallada`.
+- Aprendizaje por feedback del usuario (frases al diccionario personalizado).
+
+### 🔍 Fase 1 — RAG estructurado (Ene 2026)
+- Recuperación aumentada por recuperación (RAG) con fuentes citadas.
+- FAISS + embeddings locales (`all-MiniLM-L6-v2`).
+- Validador de distractores y *confidence scoring* por pregunta y examen resuelto.
+
+---
+
+## �📦 Descargar e instalar (usuarios finales)
 
 | Plataforma | Descarga | Requisitos |
 |------------|----------|------------|
