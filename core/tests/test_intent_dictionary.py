@@ -44,7 +44,7 @@ class TestDefaultEntries:
             assert "response_style" in entry, f"Missing 'response_style': {entry}"
 
     def test_valid_styles(self):
-        valid_styles = {"auto", "corta", "detallada", "pasos", "detallada_pasos"}
+        valid_styles = {"auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"}
         for entry in DEFAULT_ENTRIES:
             assert entry["response_style"] in valid_styles, (
                 f"Invalid style '{entry['response_style']}' in {entry}"
@@ -68,7 +68,7 @@ class TestDetectIntentAndStyle:
         ("resumen corto del tema", "resumir", "corta"),
         ("paso a paso cómo funciona", "pasos", "pasos"),
         ("pon un ejemplo de esto", "ejemplo", "auto"),
-        ("modo examen activa", "general", "detallada_pasos"),
+        ("modo examen activa", "general", "examen"),
         ("mini test sobre el tema", "general", "detallada_pasos"),
         ("explicamelo en 1 minuto", "resumir", "corta"),
         ("define el concepto", "definir", "auto"),

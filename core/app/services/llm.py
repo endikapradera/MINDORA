@@ -8,6 +8,7 @@ from typing import Sequence, Literal
 
 from llama_cpp import Llama
 from app.services.intent_dictionary import detect_intent_and_style
+from app.services.style_preferences import recommend_style
 
 
 _LLM_INSTANCE: Llama | None = None
@@ -127,7 +128,7 @@ def _infer_response_style(question: str) -> tuple[str, int]:
     return default_rules, 450
 
 
-def _style_from_selector(style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos"]) -> tuple[str, int] | None:
+def _style_from_selector(style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"]) -> tuple[str, int] | None:
     if style == "corta":
         return "- Máximo 6 líneas.\n- Resumen directo y claro.\n- Sin rodeos ni repeticiones.", 180
     if style == "detallada":
@@ -147,6 +148,30 @@ def _style_from_selector(style: Literal["auto", "corta", "detallada", "pasos", "
             "3) Ejemplo práctico aplicado.\n"
             "4) Cierre con errores comunes a evitar.",
             700,
+        )
+    if style == "examen":
+        return (
+            "1) Respuesta académica y precisa.\n"
+            "2) Estructura en apartados numerados.\n"
+            "3) Incluye términos clave del temario.\n"
+            "4) Cierra con mini-resumen tipo examen.",
+            650,
+        )
+    if style == "profesor":
+        return (
+            "1) Explica con claridad pedagógica.\n"
+            "2) Introduce concepto, desarrollo y ejemplo guiado.\n"
+            "3) Señala errores frecuentes del alumno.\n"
+            "4) Cierra con una pregunta de comprobación.",
+            700,
+        )
+    if style == "companero":
+        return (
+            "1) Tono cercano y natural.\n"
+            "2) Explicación simple sin jerga innecesaria.\n"
+            "3) Usa un ejemplo cotidiano breve.\n"
+            "4) Cierra con una regla mnemotécnica corta.",
+            520,
         )
     return None
 
@@ -183,7 +208,7 @@ def _rank_sentences(question: str, sentences: list[str]) -> list[str]:
 def generate_answer_fallback(
     question: str,
     contexts: list[str],
-    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos"] = "auto",
+    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"] = "auto",
 ) -> str:
     """Deterministic extractive fallback used when local LLM is unstable/unavailable."""
     if not contexts:
@@ -206,6 +231,29 @@ def generate_answer_fallback(
     if wants_steps:
         selected = ranked[:4]
         return "\n".join(f"{i + 1}) {s}" for i, s in enumerate(selected))
+
+    if response_style == "examen":
+        selected = ranked[:4]
+        return "\n".join(f"{i + 1}. {s}" for i, s in enumerate(selected)) + "\n\nConclusión (examen): idea central del tema y aplicación directa."
+
+    if response_style == "profesor":
+        selected = ranked[:4]
+        return "\n".join(
+            [
+                "Introducción:",
+                selected[0] if selected else "",
+                "",
+                "Desarrollo:",
+                "- " + "\n- ".join(selected[1:3]) if len(selected) > 1 else "",
+                "",
+                "Ejemplo guiado:",
+                selected[3] if len(selected) > 3 else "",
+            ]
+        ).strip()
+
+    if response_style == "companero":
+        selected = ranked[:3]
+        return "Te lo explico fácil:\n- " + "\n- ".join(selected)
 
     selected = ranked[:5]
     return "\n".join(selected)
@@ -241,14 +289,20 @@ def _dedupe_lines(text: str) -> str:
 def generate_answer(
     question: str,
     contexts: list[str],
-    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos"] = "auto",
+    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"] = "auto",
     history: list[dict] | None = None,
 ) -> str:
     if _should_use_safe_mode():
         return generate_answer_fallback(question, contexts, response_style)
 
     detected_intent, detected_style = detect_intent_and_style(question)
-    effective_style = response_style if response_style != "auto" else detected_style
+    preferred_style = recommend_style(question)
+    if response_style != "auto":
+        effective_style = response_style
+    elif preferred_style:
+        effective_style = preferred_style
+    else:
+        effective_style = detected_style
 
     selected = _style_from_selector(effective_style)
     if selected is None:

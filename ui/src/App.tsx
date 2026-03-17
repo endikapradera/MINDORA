@@ -41,6 +41,9 @@ function styleLabel(style: ResponseStyle): string {
   if (style === "corta") return "Corta";
   if (style === "detallada") return "Detallada";
   if (style === "pasos") return "Por pasos";
+  if (style === "examen") return "Modo examen";
+  if (style === "profesor") return "Modo profesor";
+  if (style === "companero") return "Modo compañero";
   return "Detallada por pasos";
 }
 
@@ -439,7 +442,7 @@ export default function App() {
     }
     if (mode === "examen") {
       setQuestion(`Explícamelo como si fuera examen: ${question}`);
-      setResponseStyle("detallada_pasos");
+      setResponseStyle("examen");
       return;
     }
     if (mode === "ejemplos") {
@@ -943,6 +946,9 @@ export default function App() {
             <option value="detallada">Detallada</option>
             <option value="pasos">Explicativa por pasos</option>
             <option value="detallada_pasos">Detallada por pasos</option>
+            <option value="examen">Modo examen</option>
+            <option value="profesor">Modo profesor</option>
+            <option value="companero">Modo compañero</option>
           </select>
           <div className="row">
             <button onClick={handleQuery} disabled={!canUseBranch}>
@@ -960,6 +966,8 @@ export default function App() {
             <button onClick={() => handleQuickExplain("ejemplos")}>Con ejemplos</button>
             <button onClick={() => handleQuickExplain("pasos")}>Paso a paso</button>
             <button onClick={() => handleQuickExplain("minuto")}>En 1 minuto</button>
+            <button onClick={() => setResponseStyle("profesor")}>Modo profesor</button>
+            <button onClick={() => setResponseStyle("companero")}>Modo compañero</button>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
             <input

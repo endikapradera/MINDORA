@@ -9,6 +9,7 @@ from app.services.intent_dictionary import (
     phrase_from_question,
     remove_dictionary_entry,
 )
+from app.services.style_preferences import record_feedback
 
 router = APIRouter()
 
@@ -44,6 +45,8 @@ def feedback(payload: FeedbackRequest):
     phrase = phrase_from_question(payload.question)
     if payload.response_style == "auto":
         return {"status": "ignored", "reason": "auto-style has no fixed mapping"}
+
+    record_feedback(payload.question, payload.response_style, payload.useful)
 
     if payload.useful:
         add_dictionary_entry(phrase, "general", payload.response_style)

@@ -7,7 +7,7 @@ from typing import Literal
 
 from app.storage.config import get_base_dir
 
-ResponseStyle = Literal["auto", "corta", "detallada", "pasos", "detallada_pasos"]
+ResponseStyle = Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"]
 IntentType = Literal["explicar", "resumir", "comparar", "ejemplo", "definir", "pasos", "general"]
 
 DEFAULT_ENTRIES: list[dict] = [
@@ -36,7 +36,15 @@ DEFAULT_ENTRIES: list[dict] = [
     {"phrase": "analogía", "intent": "ejemplo", "response_style": "auto"},
     {"phrase": "analogia", "intent": "ejemplo", "response_style": "auto"},
     {"phrase": "esquema", "intent": "pasos", "response_style": "pasos"},
-    {"phrase": "modo examen", "intent": "general", "response_style": "detallada_pasos"},
+    {"phrase": "modo examen", "intent": "general", "response_style": "examen"},
+    {"phrase": "como examen", "intent": "general", "response_style": "examen"},
+    {"phrase": "modo profesor", "intent": "explicar", "response_style": "profesor"},
+    {"phrase": "explícalo como profesor", "intent": "explicar", "response_style": "profesor"},
+    {"phrase": "explicalo como profesor", "intent": "explicar", "response_style": "profesor"},
+    {"phrase": "modo compañero", "intent": "explicar", "response_style": "companero"},
+    {"phrase": "modo companero", "intent": "explicar", "response_style": "companero"},
+    {"phrase": "explícalo como compañero", "intent": "explicar", "response_style": "companero"},
+    {"phrase": "explicalo como companero", "intent": "explicar", "response_style": "companero"},
     {"phrase": "mini test", "intent": "general", "response_style": "detallada_pasos"},
     {"phrase": "verdadero o falso", "intent": "general", "response_style": "pasos"},
     {"phrase": "repaso rápido", "intent": "resumir", "response_style": "corta"},

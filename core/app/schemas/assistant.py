@@ -5,7 +5,7 @@ from typing import Literal
 class LearnPhraseRequest(BaseModel):
     phrase: str = Field(..., min_length=2)
     intent: Literal["explicar", "resumir", "comparar", "ejemplo", "definir", "pasos", "general"] = "general"
-    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos"] = "auto"
+    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"] = "auto"
 
 
 class DictionaryEntry(BaseModel):
@@ -20,5 +20,5 @@ class DictionaryResponse(BaseModel):
 
 class FeedbackRequest(BaseModel):
     question: str = Field(..., min_length=2)
-    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos"] = "auto"
+    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"] = "auto"
     useful: bool
