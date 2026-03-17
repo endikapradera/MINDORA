@@ -206,24 +206,39 @@ export default function App() {
     }, 500);
 
     async function poll() {
-      while (!cancelled) {
-        const ok = await checkHealth();
-        if (ok && !cancelled) {
-          setBackendReady(true);
-          clearInterval(dotTimer);
-          // Check if LLM model is found
-          try {
-            const setup = await getSetupStatus();
-            setModelFound(setup.model_found);
-            setModelExpectedDir(setup.expected_dir);
-          } catch {
-            setModelFound(false);
+      let attempts = 0;
+      const maxAttempts = 50;
+      while (!cancelled && attempts < maxAttempts) {
+        attempts++;
+        try {
+          const ok = await checkHealth();
+          if (ok && !cancelled) {
+            setBackendReady(true);
+            clearInterval(dotTimer);
+            try {
+              const setup = await getSetupStatus();
+              setModelFound(setup.model_found);
+              setModelExpectedDir(setup.expected_dir);
+            } catch (err) {
+              console.warn("Setup status check failed:", err);
+              setModelFound(false);
+            }
+            try {
+              await loadBranches();
+            } catch (err) {
+              console.warn("Loading branches failed:", err);
+            }
+            return;
           }
-          // Now load branches since backend is up
-          await loadBranches();
-          return;
+        } catch (err) {
+          console.warn(`Health check attempt ${attempts} failed:`, err);
         }
         await new Promise((r) => setTimeout(r, 1200));
+      }
+      if (!cancelled) {
+        clearInterval(dotTimer);
+        setBackendReady(false);
+        console.error("Backend failed to respond after max attempts");
       }
     }
     void poll();
@@ -277,12 +292,16 @@ export default function App() {
   async function loadBranches() {
     try {
       const data = await fetchBranches();
+        if (Array.isArray(data)) {
       setBranches(data);
       if (data.length > 0 && !selectedBranch) {
         setSelectedBranch(data[0].name);
       }
-    } catch (err) {
+       }
+     } catch (err) {
+       console.error("Failed to load branches:", err);
       showToast("No se pudo cargar ramas. Asegura que el core esté activo.", "err");
+      setBranches([]);
     }
   }
 
