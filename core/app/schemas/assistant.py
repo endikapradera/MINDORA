@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Literal, Optional
 
 
 class LearnPhraseRequest(BaseModel):
@@ -22,3 +22,21 @@ class FeedbackRequest(BaseModel):
     question: str = Field(..., min_length=2)
     response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"] = "auto"
     useful: bool
+    answer_text: Optional[str] = None
+    branch: Optional[str] = None
+
+
+class FineTuneStatusResponse(BaseModel):
+    approved_examples: int
+    ready: bool
+    min_required: int
+    style_distribution: dict[str, int]
+    dataset_path: str
+
+
+class FineTuneExportResponse(BaseModel):
+    path: str
+    examples: int
+    ready: bool
+    min_required: int
+    style_distribution: dict[str, int]

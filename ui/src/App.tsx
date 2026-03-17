@@ -546,7 +546,9 @@ export default function App() {
       const res = await sendFeedback({
         question: lastQuestion,
         response_style: lastAnswerStyle,
-        useful
+        useful,
+        answer_text: answer,
+        branch: selectedBranch
       });
       if (res.status === "ignored") {
         setStatus("Feedback ignorado: usa estilo distinto de Auto para aprendizaje directo");

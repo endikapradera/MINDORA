@@ -48,6 +48,8 @@ export type FeedbackPayload = {
   question: string;
   response_style: ResponseStyle;
   useful: boolean;
+  answer_text?: string;
+  branch?: string;
 };
 
 export type ExamGenerateResponse = {
