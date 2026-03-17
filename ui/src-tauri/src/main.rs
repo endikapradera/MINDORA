@@ -11,13 +11,34 @@ fn spawn_backend(resource_dir: &std::path::Path) -> Option<Child> {
   #[cfg(not(target_os = "windows"))]
   let exe_name = "IA_Core";
 
-  let backend_exe = resource_dir.join("IA_Core").join(exe_name);
+  // Candidate paths for bundled backend.
+  // Depending on how Tauri normalizes `../` in `bundle.resources`,
+  // resources can land under `_up_/_up_/...`.
+  let candidates = [
+    resource_dir.join("IA_Core").join(exe_name),
+    resource_dir.join("core").join("dist").join("IA_Core").join(exe_name),
+    resource_dir
+      .join("_up_")
+      .join("_up_")
+      .join("core")
+      .join("dist")
+      .join("IA_Core")
+      .join(exe_name),
+  ];
 
-  if !backend_exe.exists() {
+  let backend_exe = candidates
+    .iter()
+    .find(|p| p.exists())
+    .cloned();
+
+  let Some(backend_exe) = backend_exe else {
     // Dev mode: backend is not bundled, assume it's already running
-    eprintln!("[MINDORA] Dev mode: backend exe not found at {:?}, assuming already running", backend_exe);
+    eprintln!(
+      "[MINDORA] Dev mode: backend exe not found in expected paths under {:?}, assuming already running",
+      resource_dir
+    );
     return None;
-  }
+  };
 
   eprintln!("[MINDORA] Starting backend: {:?}", backend_exe);
 
