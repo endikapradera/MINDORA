@@ -44,6 +44,8 @@ SITE_PACKAGES = _first_existing(SITE_CANDIDATES)
 
 LLAMA_CPP_DIR = _first_existing([p / "llama_cpp" for p in SITE_CANDIDATES])
 FAISS_DIR = _first_existing([p / "faiss" for p in SITE_CANDIDATES])
+FITZ_DIR_CANDIDATES = [p / "fitz" for p in SITE_CANDIDATES]
+FITZ_DIR = next((p for p in FITZ_DIR_CANDIDATES if p.exists()), None)
 ASSETS_DIR = Path("assets")
 
 FAISS_SO_FILES = sorted(glob(str(FAISS_DIR / "_swigfaiss*.so")))
@@ -64,6 +66,13 @@ for so_file in FAISS_SO_FILES:
 if (FAISS_DIR / ".dylibs").exists():
     for dylib in glob(str(FAISS_DIR / ".dylibs" / "*.dylib")):
         binaries.append((str(Path(dylib)), "faiss/.dylibs"))
+
+# PyMuPDF native extension
+if FITZ_DIR is not None:
+    for so_file in glob(str(FITZ_DIR / "*.so")):
+        binaries.append((str(Path(so_file)), "fitz"))
+    for dylib in glob(str(FITZ_DIR / ".dylibs" / "*.dylib")):
+        binaries.append((str(Path(dylib)), "fitz/.dylibs"))
 
 # ── Data files to bundle ────────────────────────────────────────────────────
 datas = [
@@ -96,8 +105,10 @@ hidden_imports = [
     "reportlab.lib.pagesizes", "reportlab.platypus",
     # Multipart
     "multipart", "python_multipart",
-    # Tesseract
+    # Tesseract + OCR
     "pytesseract", "PIL", "PIL.Image",
+    # PyMuPDF (PDF render for OCR fallback)
+    "fitz", "fitz.fitz",
     # FAISS + numpy
     "faiss", "numpy", "numpy.core", "numpy.lib", "numpy.linalg",
     # Sentence transformers + HuggingFace

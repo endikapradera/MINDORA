@@ -62,6 +62,8 @@ SITE_CANDIDATES = _collect_site_packages()
 SITE_PACKAGES   = _first_existing(SITE_CANDIDATES)
 LLAMA_CPP_DIR   = _first_existing([p / "llama_cpp" for p in SITE_CANDIDATES])
 FAISS_DIR       = _first_existing([p / "faiss"     for p in SITE_CANDIDATES])
+FITZ_DIR_CANDIDATES = [p / "fitz" for p in SITE_CANDIDATES]
+FITZ_DIR        = next((p for p in FITZ_DIR_CANDIDATES if p.exists()), None)
 ASSETS_DIR      = Path("assets")
 
 # ── Native Windows binaries ──────────────────────────────────────────────────
@@ -89,6 +91,13 @@ for pyd in FAISS_PYD:
 
 for dll in FAISS_DLLS:
     binaries.append((dll, "faiss"))
+
+# PyMuPDF native extension
+if FITZ_DIR is not None:
+    for pyd in glob(str(FITZ_DIR / "*.pyd")):
+        binaries.append((pyd, "fitz"))
+    for dll in glob(str(FITZ_DIR / "*.dll")):
+        binaries.append((dll, "fitz"))
 
 # ── Data files ───────────────────────────────────────────────────────────────
 datas = [
@@ -118,8 +127,10 @@ hidden_imports = [
     "reportlab.lib.pagesizes", "reportlab.platypus",
     # Multipart
     "multipart", "python_multipart",
-    # Tesseract (OCR wrapper — tesseract binary must be installed by end-user)
+    # Tesseract + OCR
     "pytesseract", "PIL", "PIL.Image",
+    # PyMuPDF (PDF render for OCR fallback)
+    "fitz", "fitz.fitz",
     # FAISS + numpy
     "faiss", "numpy", "numpy.core", "numpy.lib", "numpy.linalg",
     # Sentence transformers + HuggingFace
