@@ -14,6 +14,7 @@ from reportlab.pdfgen import canvas
 from app.services.text_extract import extract_text_from_file
 from app.services.query import retrieve_chunks
 from app.services.llm import generate_text
+from app.services.exam_validator import validate_exam_questions, score_solved_answer
 from app.storage.branches import get_branch_path, branch_exists
 
 
@@ -243,6 +244,18 @@ def generate_exam(
         raise RuntimeError("No se pudo generar un examen estructurado. Intenta con otro temario o topic más concreto.")
 
     questions = questions[:num_questions]
+
+    # --- Fase 4: validate distractors + confidence scoring ---
+    questions = validate_exam_questions(questions, context_texts, use_llm=False)
+    avg_confidence = round(
+        sum(q.get("confidence", 1.0) for q in questions) / max(1, len(questions)), 2
+    )
+    distractor_warnings = [
+        f"P{q['number']}: {issue}"
+        for q in questions
+        for issue in q.get("distractor_issues", [])
+    ]
+
     exam_content = _render_exam_statement(questions, topic, difficulty, exam_type)
     answer_key_content = _render_answer_key(questions, topic)
 
@@ -260,6 +273,8 @@ def generate_exam(
         "exam_content": exam_content,
         "answer_key_content": answer_key_content,
         "raw_content": raw_content,
+        "avg_confidence": avg_confidence,
+        "distractor_warnings": distractor_warnings,
         "created_at": datetime.utcnow().isoformat(),
     }
     (exams_dir / filename).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -268,6 +283,8 @@ def generate_exam(
         "filename": filename,
         "exam_content": exam_content,
         "answer_key_content": answer_key_content,
+        "avg_confidence": avg_confidence,
+        "distractor_warnings": distractor_warnings,
     }
 
 
@@ -346,7 +363,21 @@ def solve_uploaded_exam(branch: str, file_path: Path, top_k: int = 8) -> dict:
     )
 
     solutions = generate_text(prompt, max_tokens=1200, temperature=0.15)
-    return {"solutions": solutions}
+
+    # Per-solution confidence scoring
+    solution_blocks = re.split(r"###\s*Soluci[oó]n\s*\d+", solutions)
+    context_texts_short = [c["text"] for c in contexts]
+    solution_scores: list[float] = []
+    for block in solution_blocks:
+        block = block.strip()
+        if block:
+            score = score_solved_answer(block, context_texts_short)
+            solution_scores.append(score)
+    avg_solution_confidence = round(
+        sum(solution_scores) / max(1, len(solution_scores)), 2
+    ) if solution_scores else None
+
+    return {"solutions": solutions, "avg_solution_confidence": avg_solution_confidence}
 
 
 def start_exam_simulation(branch: str, exam_id: str, duration_minutes: int = 30) -> dict:
@@ -529,6 +560,7 @@ def submit_exam_simulation(branch: str, simulation_id: str, answers: list[dict])
                 "expected_answer": expected,
                 "correct": correct,
                 "feedback": feedback,
+                "question_confidence": float(q.get("confidence", 1.0)),
             }
         )
 
@@ -551,6 +583,10 @@ def submit_exam_simulation(branch: str, simulation_id: str, answers: list[dict])
         seen.add(k)
         unique_weak_topics.append(wt)
 
+    avg_q_conf = round(
+        sum(r.get("question_confidence", 1.0) for r in results) / max(1, len(results)), 2
+    )
+
     return {
         "simulation_id": simulation_id,
         "exam_id": simulation["exam_id"],
@@ -562,6 +598,7 @@ def submit_exam_simulation(branch: str, simulation_id: str, answers: list[dict])
         "status": status,
         "weak_topics": unique_weak_topics[:8],
         "results": results,
+        "avg_question_confidence": avg_q_conf,
     }
 
 

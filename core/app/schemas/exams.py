@@ -16,6 +16,8 @@ class ExamGenerateResponse(BaseModel):
     filename: str
     exam_content: str
     answer_key_content: str
+    avg_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    distractor_warnings: list[str] = []
 
 
 class ExamExportResponse(BaseModel):
@@ -24,6 +26,7 @@ class ExamExportResponse(BaseModel):
 
 class ExamSolveUploadResponse(BaseModel):
     solutions: str
+    avg_solution_confidence: Optional[float] = None
 
 
 class SimulationQuestion(BaseModel):
@@ -66,6 +69,7 @@ class SimulationResultItem(BaseModel):
     expected_answer: str
     correct: bool
     feedback: str
+    question_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
 class ExamSimulationSubmitResponse(BaseModel):
@@ -79,6 +83,7 @@ class ExamSimulationSubmitResponse(BaseModel):
     status: str
     weak_topics: list[str]
     results: list[SimulationResultItem]
+    avg_question_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
 class ExamSimulationHistoryItem(BaseModel):
