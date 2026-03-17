@@ -1,0 +1,106 @@
+TEMA 1 – MECÁNICA CLÁSICA
+
+1.1 Cinemática
+La cinemática estudia el movimiento sin considerar sus causas.
+
+Magnitudes fundamentales:
+- Posición: vector r(t)
+- Desplazamiento: Δr = r₂ - r₁
+- Velocidad media: v_m = Δr/Δt
+- Velocidad instantánea: v = dr/dt
+- Aceleración: a = dv/dt = d²r/dt²
+
+Movimiento Rectilíneo Uniforme (MRU): aceleración = 0.
+- x(t) = x₀ + v·t
+
+Movimiento Rectilíneo Uniformemente Acelerado (MRUA): aceleración constante a.
+- v(t) = v₀ + a·t
+- x(t) = x₀ + v₀·t + ½a·t²
+- v² = v₀² + 2a·(x - x₀)
+
+Caída libre: MRUA con a = -g = -9.8 m/s² (hacia abajo).
+
+Tiro parabólico:
+- Componente horizontal: x = v₀·cos(θ)·t (MRU)
+- Componente vertical: y = v₀·sin(θ)·t - ½g·t²
+- Alcance máximo: R = v₀²·sin(2θ)/g  →  ángulo óptimo: θ = 45°
+
+1.2 Dinámica – Leyes de Newton
+Primera ley (inercia): un cuerpo en reposo o MRU permanece así si la fuerza neta es cero.
+Segunda ley (F = ma): la fuerza neta sobre un cuerpo es igual al producto de su masa por su aceleración.
+Tercera ley (acción-reacción): si A ejerce fuerza F sobre B, entonces B ejerce -F sobre A.
+
+Fuerzas fundamentales en mecánica:
+- Peso: W = m·g (dirección: hacia el centro de la Tierra)
+- Normal: perpendicular a la superficie de apoyo
+- Fricción estática: fₛ ≤ μₛ·N; dinámica: fₖ = μₖ·N
+- Tensión: fuerza en una cuerda ideal inextensible
+
+Plano inclinado: componente del peso paralela al plano = m·g·sin(θ); perpendicular = m·g·cos(θ).
+
+1.3 Trabajo y energía
+Trabajo: W = F·d·cos(α) donde α es el ángulo entre F y el desplazamiento. Unidad: Julio (J).
+Energía cinética: Eₖ = ½mv². Teorema trabajo-energía: ΔEₖ = W_neto.
+Energía potencial gravitatoria: U = mgh (referencia en h = 0).
+Energía potencial elástica: U = ½kx² (muelle con constante k, elongación x).
+Conservación de la energía mecánica (sin rozamiento): Eₖ + U = constante.
+Potencia: P = W/t = F·v. Unidad: Watio (W).
+
+1.4 Cantidad de movimiento e impulso
+Cantidad de movimiento (momento lineal): p = m·v.
+Impulso: J = F·Δt = Δp.
+Conservación del momento: en un sistema aislado, p_total = constante.
+Colisión elástica: conserva Eₖ y p.
+Colisión inelástica: conserva solo p.
+Colisión perfectamente inelástica: los cuerpos quedan unidos; máxima pérdida de Eₖ.
+
+TEMA 2 – TERMODINÁMICA
+
+2.1 Temperatura y calor
+Calor Q: transferencia de energía térmica por diferencia de temperatura.
+Temperatura: medida del estado térmico. Escalas: Celsius (°C), Kelvin (K = °C + 273.15), Fahrenheit.
+Capacidad calorífica: C = Q/ΔT. Calor específico: c = C/m (J/kg·K).
+Q = m·c·ΔT (sin cambio de fase).
+Cambio de fase: Q = m·L (L = calor latente; sin variación de temperatura).
+
+2.2 Leyes de la termodinámica
+Ley 0: si A y B están en equilibrio térmico con C, entonces A y B están en equilibrio entre sí.
+Primera ley: ΔU = Q - W. La energía interna de un sistema varía por calor absorbido menos trabajo realizado.
+Segunda ley: el calor no fluye espontáneamente de un cuerpo frío a uno caliente. La entropía de un sistema aislado nunca disminuye.
+Tercera ley: la entropía de un cristal perfecto a 0 K es cero.
+
+Procesos termodinámicos en gas ideal:
+- Isotérmico (T = cte): pV = cte (ley de Boyle). ΔU = 0, Q = W.
+- Isocórico (V = cte): W = 0. Q = ΔU = nCᵥΔT.
+- Isobárico (p = cte): W = pΔV. Q = nCₚΔT.
+- Adiabático: Q = 0. pVᵧ = cte (γ = Cₚ/Cᵥ).
+
+Máquinas térmicas: eficiencia η = W/Q_H = 1 - Q_C/Q_H.
+Ciclo de Carnot (máxima eficiencia): η_Carnot = 1 - T_C/T_H.
+
+TEMA 3 – ELECTROMAGNETISMO
+
+3.1 Electrostática
+Ley de Coulomb: F = k·q₁·q₂/r²  (k = 9×10⁹ N·m²/C²).
+Campo eléctrico: E = F/q₀ = k·Q/r². Dirección: radial saliente para cargas positivas.
+Potencial eléctrico: V = k·Q/r. Trabajo W = q·ΔV.
+Capacitor (condensador): C = Q/V. En paralelo: C_total = ΣCᵢ. En serie: 1/C = Σ(1/Cᵢ).
+
+3.2 Corriente eléctrica y circuitos
+Corriente: I = dQ/dt. Unidad: Amperio (A).
+Ley de Ohm: V = I·R. Resistencia R en Ohmios (Ω).
+Resistencias en serie: R_total = ΣRᵢ.
+Resistencias en paralelo: 1/R_total = Σ(1/Rᵢ).
+Potencia: P = V·I = I²R = V²/R.
+Leyes de Kirchhoff:
+- Ley de nodos (KCL): la suma de corrientes en un nodo es cero.
+- Ley de mallas (KVL): la suma de tensiones en una malla cerrada es cero.
+
+3.3 Magnetismo e inducción
+Fuerza magnética sobre una carga: F = q·v×B (regla de la mano derecha).
+Fuerza sobre conductor: F = I·L×B.
+Ley de Faraday: fem = -dΦ/dt (la variación del flujo magnético induce una fem).
+Ley de Lenz: la corriente inducida se opone al cambio de flujo que la genera.
+Ley de Ampère: ∮B·dl = μ₀·I_enc.
+Ondas electromagnéticas: combinación de campo E y B oscilantes perpendiculares. Velocidad en vacío: c = 3×10⁸ m/s.
+Espectro electromagnético: radio, microondas, infrarrojo, visible, ultravioleta, rayos X, rayos gamma.

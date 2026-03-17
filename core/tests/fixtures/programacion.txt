@@ -1,0 +1,189 @@
+TEMA 1 – FUNDAMENTOS DE PROGRAMACIÓN EN PYTHON
+
+1.1 Tipos de datos y variables
+Python es un lenguaje de tipado dinámico. Los tipos de datos básicos son:
+- int: números enteros (ej: x = 5)
+- float: números decimales (ej: y = 3.14)
+- str: cadenas de texto (ej: nombre = "MINDORA")
+- bool: valores lógicos True/False
+- list: lista ordenada y mutable [1, 2, 3]
+- tuple: tupla inmutable (1, 2, 3)
+- dict: diccionario de clave-valor {"clave": "valor"}
+- set: conjunto de elementos únicos {1, 2, 3}
+
+Asignación múltiple: a, b, c = 1, 2, 3
+Intercambio: a, b = b, a
+
+1.2 Estructuras de control
+Condicional if-elif-else:
+```python
+if x > 0:
+    print("positivo")
+elif x == 0:
+    print("cero")
+else:
+    print("negativo")
+```
+
+Bucle for:
+```python
+for i in range(10):
+    print(i)
+```
+range(inicio, fin, paso) genera una secuencia de enteros.
+
+Bucle while:
+```python
+contador = 0
+while contador < 5:
+    contador += 1
+```
+
+Instrucciones break (salir del bucle) y continue (saltar a la siguiente iteración).
+
+1.3 Funciones
+Definición de función:
+```python
+def saludar(nombre, saludo="Hola"):
+    return f"{saludo}, {nombre}!"
+```
+
+Argumentos por posición, por nombre (keyword), con valor por defecto y *args/**kwargs:
+```python
+def suma(*args):
+    return sum(args)
+```
+
+Funciones lambda (anónimas):
+```python
+cuadrado = lambda x: x**2
+```
+
+Ámbito de variables: las variables definidas dentro de una función son locales. Para modificar una global usar la palabra clave `global`.
+
+1.4 Programación orientada a objetos (POO)
+Clase y objeto:
+```python
+class Animal:
+    def __init__(self, nombre, especie):
+        self.nombre = nombre
+        self.especie = especie
+
+    def hablar(self):
+        return f"{self.nombre} hace un sonido"
+
+perro = Animal("Rex", "Canis lupus")
+```
+
+Pilares de la POO:
+- Encapsulamiento: ocultar detalles internos usando _ (convencion) o __ (name mangling)
+- Herencia: class Perro(Animal) hereda atributos y métodos de Animal
+- Polimorfismo: diferentes clases pueden implementar el mismo método de forma distinta
+- Abstracción: definir interfaces sin implementación concreta (módulo abc)
+
+Herencia múltiple y MRO (Method Resolution Order): Python usa el algoritmo C3 para determinar el orden de resolución de métodos.
+
+TEMA 2 – ALGORITMOS Y ESTRUCTURAS DE DATOS
+
+2.1 Complejidad algorítmica
+La notación O grande (Big-O) describe el comportamiento asintótico del tiempo o espacio requerido.
+- O(1): tiempo constante (acceso a array por índice)
+- O(log n): logarítmico (búsqueda binaria)
+- O(n): lineal (recorrido de lista)
+- O(n log n): cuasilineal (Mergesort, Heapsort)
+- O(n²): cuadrático (burbuja, inserción en el peor caso)
+- O(2ⁿ): exponencial (fuerza bruta en problemas NP)
+
+2.2 Algoritmos de ordenación
+Burbuja (Bubble Sort):
+Compara pares adyacentes e intercambia si están en el orden incorrecto. O(n²) en promedio.
+
+Quicksort:
+Divide la lista en torno a un pivote. Partición izquierda < pivote < partición derecha.
+Mejor caso y promedio: O(n log n). Peor caso: O(n²) con pivote mal elegido.
+
+Mergesort:
+Divide la lista en mitades recursivamente, ordena cada mitad y las fusiona. O(n log n) siempre.
+Requiere O(n) espacio adicional.
+
+2.3 Estructuras de datos
+Pila (Stack): LIFO (Last In First Out). Operaciones: push, pop, peek. Uso: llamadas a funciones, evaluación de expresiones.
+Cola (Queue): FIFO (First In First Out). Operaciones: enqueue, dequeue. Uso: BFS, impresión, simulaciones.
+Árbol binario de búsqueda (BST): cada nodo tiene clave, izquierdo menor y derecho mayor. Búsqueda, inserción y borrado en O(log n) en caso medio.
+Tabla Hash: almacena pares clave-valor. Acceso, inserción y borrado en O(1) amortizado. Colisiones resueltas por encadenamiento o direccionamiento abierto.
+Grafo: conjunto de nodos (vértices) y aristas. Puede ser dirigido o no dirigido, ponderado o no.
+
+2.4 Algoritmos de búsqueda en grafos
+BFS (Breadth-First Search): recorre nodo a nodo por niveles. Usa una cola. Encuentra el camino más corto en grafos no ponderados.
+DFS (Depth-First Search): recorre en profundidad. Usa una pila (o recursión). Útil para detectar ciclos, componentes conexas y ordenación topológica.
+Dijkstra: camino más corto en grafos ponderados con pesos positivos. O((V+E) log V) con heap.
+
+TEMA 3 – BASES DE DATOS Y SQL
+
+3.1 Modelo relacional
+Una base de datos relacional organiza los datos en tablas (relaciones).
+- Tabla: conjunto de filas (registros) y columnas (atributos)
+- Clave primaria (PRIMARY KEY): identificador único de cada fila
+- Clave foránea (FOREIGN KEY): referencia a la clave primaria de otra tabla
+- Índice: estructura auxiliar que acelera las consultas
+
+Normalización:
+- 1NF: sin grupos repetitivos, celdas atómicas
+- 2NF: 1NF + sin dependencias parciales de la clave primaria
+- 3NF: 2NF + sin dependencias transitivas
+
+3.2 SQL básico
+```sql
+-- Crear tabla
+CREATE TABLE Estudiantes (
+    id INTEGER PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    nota REAL DEFAULT 0.0
+);
+
+-- Insertar
+INSERT INTO Estudiantes (nombre, nota) VALUES ('Ana', 9.5);
+
+-- Consultar
+SELECT nombre, nota FROM Estudiantes WHERE nota >= 5.0 ORDER BY nota DESC;
+
+-- Actualizar
+UPDATE Estudiantes SET nota = 8.0 WHERE nombre = 'Ana';
+
+-- Eliminar
+DELETE FROM Estudiantes WHERE nota < 5.0;
+```
+
+Joins:
+- INNER JOIN: sólo filas con coincidencia en ambas tablas
+- LEFT JOIN: todas las filas de la tabla izquierda, con NULL si no hay coincidencia
+- RIGHT JOIN: idem pero con la tabla derecha
+- FULL OUTER JOIN: todas las filas de ambas tablas
+
+Funciones de agregación: COUNT, SUM, AVG, MAX, MIN con cláusula GROUP BY y filtrado HAVING.
+
+3.3 Transacciones ACID
+- Atomicidad: la transacción ocurre completamente o no ocurre
+- Consistencia: la BD pasa de un estado válido a otro
+- Aislamiento: las transacciones concurrentes no se interfieren
+- Durabilidad: los cambios confirmados son permanentes
+
+TEMA 4 – REDES Y SISTEMAS OPERATIVOS
+
+4.1 Modelo TCP/IP
+Capas:
+1. Acceso a la red (Ethernet, WiFi)
+2. Internet (IP): direccionamiento y enrutamiento
+3. Transporte (TCP, UDP): control de flujo y entrega
+4. Aplicación (HTTP, FTP, SMTP, DNS)
+
+TCP vs UDP:
+- TCP: orientado a conexión, fiable, ordenado, más lento (handshake de 3 vías: SYN, SYN-ACK, ACK)
+- UDP: sin conexión, no garantiza entrega, más rápido (vídeo, juegos en tiempo real)
+
+4.2 Procesos e hilos en sistemas operativos
+Proceso: instancia de un programa en ejecución, con su propio espacio de memoria.
+Hilo (thread): unidad de ejecución dentro de un proceso, comparte memoria con otros hilos.
+Condición de carrera: error cuando el resultado depende del orden de ejecución de hilos.
+Mutex/Semáforo: mecanismos de sincronización para proteger secciones críticas.
+Deadlock: dos procesos se bloquean esperando recursos que el otro posee. Condiciones de Coffman: exclusión mutua, retención y espera, no apropiación, espera circular.

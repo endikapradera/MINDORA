@@ -1,0 +1,142 @@
+TEMA 1 – CÁLCULO DIFERENCIAL E INTEGRAL
+
+1.1 Definición de límite
+El límite de una función f(x) cuando x tiende a un valor a es el número L tal que, a medida que x se acerca a a, f(x) se acerca a L. Notación: lim(x→a) f(x) = L.
+
+Propiedades de los límites:
+- Límite de una suma: lim(f + g) = lim f + lim g
+- Límite de un producto: lim(f · g) = lim f · lim g
+- Límite de un cociente: lim(f/g) = lim f / lim g  (siempre que lim g ≠ 0)
+
+Regla de L'Hôpital: Si lim f(x)/g(x) es indeterminado (0/0 o ∞/∞), entonces:
+lim f(x)/g(x) = lim f'(x)/g'(x)
+
+1.2 Derivada de una función
+La derivada de f en el punto x₀ se define como:
+f'(x₀) = lim(h→0) [f(x₀ + h) - f(x₀)] / h
+
+Interpretación geométrica: la derivada es la pendiente de la recta tangente a la curva en ese punto.
+Interpretación física: si f(t) es la posición, f'(t) es la velocidad instantánea.
+
+Reglas de derivación:
+- Derivada de una constante: d/dx(c) = 0
+- Derivada de xⁿ: d/dx(xⁿ) = n·xⁿ⁻¹
+- Regla de la cadena: d/dx[f(g(x))] = f'(g(x)) · g'(x)
+- Derivada del producto: (f·g)' = f'·g + f·g'
+- Derivada del cociente: (f/g)' = (f'·g - f·g') / g²
+- Derivada de sin(x): cos(x)
+- Derivada de cos(x): -sin(x)
+- Derivada de eˣ: eˣ
+- Derivada de ln(x): 1/x
+
+Ejemplo: Sea f(x) = x³ - 3x² + 2x. Entonces f'(x) = 3x² - 6x + 2.
+Los puntos críticos se obtienen resolviendo f'(x) = 0: 3x² - 6x + 2 = 0.
+
+1.3 Integral definida e indefinida
+La integral indefinida de f(x) es la familia de funciones F(x) tal que F'(x) = f(x).
+Notación: ∫f(x)dx = F(x) + C
+
+Reglas básicas de integración:
+- ∫xⁿ dx = xⁿ⁺¹/(n+1) + C  (n ≠ -1)
+- ∫eˣ dx = eˣ + C
+- ∫sin(x) dx = -cos(x) + C
+- ∫cos(x) dx = sin(x) + C
+- ∫(1/x) dx = ln|x| + C
+
+Teorema fundamental del cálculo: Si F es una primitiva de f continua en [a, b], entonces:
+∫ₐᵇ f(x) dx = F(b) - F(a)
+
+Ejemplo: ∫₀² (3x²) dx = [x³]₀² = 8 - 0 = 8
+
+1.4 Aplicaciones del cálculo
+- Máximos y mínimos: f'(x) = 0 y estudio del signo de f''(x)
+- Si f''(x₀) > 0 → mínimo local
+- Si f''(x₀) < 0 → máximo local
+- Área bajo la curva: A = ∫ₐᵇ |f(x)| dx
+- Volumen de revolución (método del disco): V = π ∫ₐᵇ [f(x)]² dx
+
+TEMA 2 – ÁLGEBRA LINEAL
+
+2.1 Matrices y determinantes
+Una matriz es una tabla rectangular de números con m filas y n columnas (matriz m×n).
+
+Operaciones con matrices:
+- Suma: (A+B)ᵢⱼ = Aᵢⱼ + Bᵢⱼ (requiere misma dimensión)
+- Producto: (A·B)ᵢⱼ = Σₖ Aᵢₖ · Bₖⱼ (el número de columnas de A debe igualar el de filas de B)
+- Transpuesta: (Aᵀ)ᵢⱼ = Aⱼᵢ
+
+Determinante de una matriz 2×2:
+det([[a,b],[c,d]]) = ad - bc
+
+Determinante de una matriz 3×3 (regla de Sarrus):
+Se copia las dos primeras columnas a la derecha y se suman los productos de las diagonales principales y se restan los de las diagonales secundarias.
+
+Propiedades del determinante:
+- det(Aᵀ) = det(A)
+- det(A·B) = det(A)·det(B)
+- Si una fila es combinación lineal de otras, det(A) = 0
+- det(A⁻¹) = 1/det(A)
+
+2.2 Sistemas de ecuaciones lineales
+Un sistema Ax = b tiene solución única si det(A) ≠ 0.
+Método de Gauss-Jordan: se aplican operaciones elementales para reducir la matriz aumentada [A|b] a forma escalonada reducida.
+Teorema de Rouché-Frobenius: el sistema es compatible si rango(A) = rango(A|b).
+
+Ejemplo: Resolver { 2x + y = 5 ; x - y = 1 }
+Matriz aumentada: [[2,1,5],[1,-1,1]]
+Eliminación: fila1 - 2·fila2 → [0,3,3] → y = 1
+Sustitución: x = 1 + y = 2. Solución: (x, y) = (2, 1).
+
+2.3 Espacios vectoriales
+Un espacio vectorial V sobre un cuerpo K es un conjunto con operaciones de suma y producto por escalar que cumplen 8 axiomas.
+
+Conceptos fundamentales:
+- Subespacio: subconjunto cerrado bajo suma y producto por escalar
+- Independencia lineal: los vectores v₁,...,vₙ son independientes si α₁v₁+...+αₙvₙ=0 implica α₁=...=αₙ=0
+- Base: conjunto de vectores linealmente independientes que generan el espacio
+- Dimensión: número de vectores en cualquier base del espacio
+
+Transformaciones lineales:
+Una función T: V → W es lineal si T(u+v) = T(u)+T(v) y T(αv) = αT(v).
+Núcleo de T: ker(T) = {v ∈ V : T(v) = 0}
+Imagen de T: Im(T) = {T(v) : v ∈ V}
+Teorema de la dimensión: dim(ker T) + dim(Im T) = dim(V)
+
+TEMA 3 – PROBABILIDAD Y ESTADÍSTICA
+
+3.1 Probabilidad
+Espacio muestral Ω: conjunto de todos los resultados posibles de un experimento.
+Evento A: subconjunto de Ω.
+Probabilidad: P(A) ∈ [0,1], P(Ω) = 1.
+
+Axiomas de Kolmogorov:
+1. P(A) ≥ 0 para todo evento A
+2. P(Ω) = 1
+3. Si A∩B = ∅, entonces P(A∪B) = P(A) + P(B)
+
+Reglas fundamentales:
+- P(A∪B) = P(A) + P(B) - P(A∩B)
+- P(Aᶜ) = 1 - P(A)
+- Probabilidad condicional: P(A|B) = P(A∩B)/P(B)
+- Independencia: A y B son independientes si P(A∩B) = P(A)·P(B)
+- Regla de Bayes: P(A|B) = P(B|A)·P(A) / P(B)
+
+3.2 Distribuciones de probabilidad
+Variable aleatoria discreta X con función de masa de probabilidad P(X=x).
+- Distribución Binomial: X ~ B(n,p). P(X=k) = C(n,k)·pᵏ·(1-p)ⁿ⁻ᵏ. Media: np. Varianza: np(1-p).
+- Distribución de Poisson: X ~ Po(λ). P(X=k) = e⁻λ·λᵏ/k!. Media y varianza: λ.
+
+Variable aleatoria continua X con función de densidad f(x).
+- Distribución Normal: X ~ N(μ, σ²). Curva en forma de campana simétrica.
+  - Regla 68-95-99.7: el 68% de los datos cae dentro de 1σ de la media.
+  - Tipificación: Z = (X - μ)/σ → Z ~ N(0,1)
+
+Teorema central del límite: la media muestral de una muestra grande de cualquier distribución se aproxima a una distribución normal.
+
+3.3 Estadística descriptiva
+- Media aritmética: x̄ = (Σxᵢ)/n
+- Mediana: valor central al ordenar los datos
+- Moda: valor más frecuente
+- Varianza: s² = Σ(xᵢ - x̄)²/(n-1)
+- Desviación típica: s = √s²
+- Coeficiente de correlación de Pearson: r ∈ [-1,1], mide la relación lineal entre dos variables

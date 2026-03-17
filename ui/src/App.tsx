@@ -163,6 +163,13 @@ export default function App() {
   const [studyMiniTest, setStudyMiniTest] = useState<string[]>([]);
   const [studySources, setStudySources] = useState<string[]>([]);
   const [status, setStatus] = useState("");
+  const [toast, setToast] = useState<{msg: string; type: "ok"|"err"} | null>(null);
+  // Inline validation errors por formulario
+  const [branchNameError, setBranchNameError] = useState("");
+  const [fileError, setFileError] = useState("");
+  const [questionError, setQuestionError] = useState("");
+  const [examTopicError, setExamTopicError] = useState("");
+  const [learnPhraseError, setLearnPhraseError] = useState("");
   const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
   const [showDictPanel, setShowDictPanel] = useState(false);
   const [dailyRecs, setDailyRecs] = useState<DailyRecommendationItem[]>([]);
@@ -261,6 +268,12 @@ export default function App() {
     localStorage.setItem("mindora.theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
+  function showToast(msg: string, type: "ok" | "err" = "ok") {
+    setToast({ msg, type });
+    setStatus(msg);
+    setTimeout(() => setToast(null), 3500);
+  }
+
   async function loadBranches() {
     try {
       const data = await fetchBranches();
@@ -269,7 +282,7 @@ export default function App() {
         setSelectedBranch(data[0].name);
       }
     } catch (err) {
-      setStatus("No se pudo cargar ramas. Asegura que el core esté activo.");
+      showToast("No se pudo cargar ramas. Asegura que el core esté activo.", "err");
     }
   }
 
@@ -330,15 +343,28 @@ export default function App() {
   }
 
   async function handleCreateBranch() {
-    if (!branchName) return;
+    setBranchNameError("");
+    const name = branchName.trim();
+    if (!name) {
+      setBranchNameError("El nombre de la rama no puede estar vacío.");
+      return;
+    }
+    if (name.length < 2) {
+      setBranchNameError("Mínimo 2 caracteres.");
+      return;
+    }
+    if (/[<>:"|?*\\]/.test(name)) {
+      setBranchNameError("El nombre contiene caracteres no permitidos.");
+      return;
+    }
     try {
-      const created = await createBranch(branchName);
+      const created = await createBranch(name);
       setBranches((prev: Branch[]) => [...prev, created]);
       setSelectedBranch(created.name);
       setBranchName("");
-      setStatus("Rama creada");
+      showToast("✅ Rama creada");
     } catch {
-      setStatus("Error creando rama");
+      setBranchNameError("Ya existe una rama con ese nombre.");
     }
   }
 
@@ -356,25 +382,41 @@ export default function App() {
         return updated;
       });
       setDocuments([]);
-      setStatus("Rama eliminada");
+      showToast("✅ Rama eliminada");
     } catch {
-      setStatus("Error eliminando rama");
+      showToast("Error al eliminar la rama", "err");
     }
   }
 
   async function handleIngest() {
-    if (!file || !canUseBranch) return;
+    setFileError("");
+    if (!canUseBranch) {
+      setFileError("Selecciona una rama primero.");
+      return;
+    }
+    if (!file) {
+      setFileError("Selecciona un archivo para subir.");
+      return;
+    }
+    const allowed = [".pdf", ".docx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"];
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    if (!allowed.includes(ext)) {
+      setFileError(`Formato no soportado (${ext}). Usa PDF, DOCX, PPTX, TXT o imagen.`);
+      return;
+    }
     try {
       const result = await ingestDocument(selectedBranch, file);
-      setStatus(`Documento ingresado. Chunks: ${result.chunks}`);
+      showToast(`✅ Documento subido. Fragmentos: ${result.chunks}`);
       await loadDocuments(selectedBranch);
     } catch {
-      setStatus("Error en ingesta");
+      setFileError("Error al subir el documento. Comprueba que el formato es compatible.");
     }
   }
 
   async function handleQuery() {
-    if (!question || !canUseBranch) return;
+    setQuestionError("");
+    if (!canUseBranch) { setQuestionError("Selecciona una rama primero."); return; }
+    if (!question.trim()) { setQuestionError("Escribe una pregunta antes de buscar contexto."); return; }
     try {
       const result = await queryRag(
         selectedBranch,
@@ -385,12 +427,15 @@ export default function App() {
       setChunks(result.results.map((r) => r.text));
       setStatus(`Resultados: ${result.results.length}`);
     } catch {
-      setStatus("Error en query");
+      showToast("Error al buscar contexto", "err");
     }
   }
 
   async function handleAsk() {
-    if (!question || !canUseBranch) return;
+    setQuestionError("");
+    if (!canUseBranch) { setQuestionError("Selecciona una rama primero."); return; }
+    if (!question.trim()) { setQuestionError("Escribe una pregunta para continuar."); return; }
+    if (question.trim().length < 3) { setQuestionError("La pregunta debe tener al menos 3 caracteres."); return; }
     try {
       const result = await askRag(
         selectedBranch,
@@ -420,7 +465,7 @@ export default function App() {
       );
       setContexts([]);
       setSources([]);
-      setStatus(`Error en ask: ${detail}`);
+      showToast(`Error: ${detail}`, "err");
     }
   }
 
@@ -529,14 +574,22 @@ export default function App() {
   }
 
   async function handleLearnPhrase() {
+    setLearnPhraseError("");
     const phrase = learnPhraseText.trim();
-    if (!phrase) return;
+    if (!phrase) {
+      setLearnPhraseError("Escribe una frase para enseñarle a la IA.");
+      return;
+    }
+    if (phrase.length < 4) {
+      setLearnPhraseError("La frase debe tener al menos 4 caracteres.");
+      return;
+    }
     try {
       await learnPhrase({ phrase, intent: "general", response_style: responseStyle });
       setLearnPhraseText("");
-      setStatus("Frase aprendida en diccionario");
+      showToast("✅ Frase aprendida en el diccionario");
     } catch {
-      setStatus("Error guardando frase");
+      setLearnPhraseError("Error al guardar la frase. Inténtalo de nuevo.");
     }
   }
 
@@ -561,15 +614,28 @@ export default function App() {
   }
 
   async function handleExam() {
-    if (!examTopic || !canUseBranch) return;
+    setExamTopicError("");
+    if (!canUseBranch) { setExamTopicError("Selecciona una rama con documentos subidos."); return; }
+    if (!examTopic.trim()) {
+      setExamTopicError("Escribe el tema del examen.");
+      return;
+    }
+    if (examTopic.trim().length < 3) {
+      setExamTopicError("El tema debe tener al menos 3 caracteres.");
+      return;
+    }
+    if (examCount < 1 || examCount > 50) {
+      setExamTopicError("El número de preguntas debe estar entre 1 y 50.");
+      return;
+    }
     try {
       const result = await generateExam(selectedBranch, examTopic, examCount, examDifficulty, 6, examType);
       setExamId(result.exam_id);
       setExamContent(result.exam_content);
       setAnswerKeyContent(result.answer_key_content);
-      setStatus("Examen generado");
+      showToast("✅ Examen generado correctamente");
     } catch {
-      setStatus("Error generando examen");
+      setExamTopicError("Error al generar el examen. Asegúrate de tener documentos en la rama.");
     }
   }
 
@@ -884,8 +950,10 @@ export default function App() {
           <input
             placeholder="Nombre de la rama"
             value={branchName}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setBranchName(e.target.value)}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => { setBranchName(e.target.value); setBranchNameError(""); }}
+            className={branchNameError ? "input-error" : ""}
           />
+          {branchNameError && <span className="field-error">{branchNameError}</span>}
           <div className="row">
             <button onClick={handleCreateBranch}>Crear</button>
             <button onClick={handleDeleteBranch} disabled={!canUseBranch}>
@@ -896,12 +964,15 @@ export default function App() {
 
         {isTemarios && <div className="card">
           <h3>Ingesta de documentos</h3>
+          {!canUseBranch && <span className="field-error">Selecciona una rama antes de subir documentos.</span>}
           <input
             type="file"
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] ?? null)}
+            className={fileError ? "input-error" : ""}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => { setFile(e.target.files?.[0] ?? null); setFileError(""); }}
           />
-          <button onClick={handleIngest} disabled={!file || !canUseBranch}>
-            Ingestar
+          {fileError && <span className="field-error">{fileError}</span>}
+          <button onClick={handleIngest} disabled={!canUseBranch}>
+            Subir documento
           </button>
           {documents.length > 0 && (
             <div className="result" style={{ marginTop: 12 }}>
@@ -937,8 +1008,10 @@ export default function App() {
             rows={4}
             placeholder="Escribe tu pregunta"
             value={question}
-            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQuestion(e.target.value)}
+            className={questionError ? "input-error" : ""}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => { setQuestion(e.target.value); setQuestionError(""); }}
           />
+          {questionError && <span className="field-error">{questionError}</span>}
           <select
             value={responseStyle}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setResponseStyle(e.target.value as ResponseStyle)}
@@ -975,19 +1048,23 @@ export default function App() {
             <input
               placeholder="Enseña una frase (ej: 'hazlo super corto')"
               value={learnPhraseText}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setLearnPhraseText(e.target.value)}
+              className={learnPhraseError ? "input-error" : ""}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => { setLearnPhraseText(e.target.value); setLearnPhraseError(""); }}
             />
             <button onClick={handleLearnPhrase}>Aprender frase</button>
           </div>
+          {learnPhraseError && <span className="field-error" style={{ marginTop: 4 }}>{learnPhraseError}</span>}
         </div>}
 
         {isExamenes && <div className="card">
           <h3>Generar examen</h3>
           <input
-            placeholder="Tema"
+            placeholder="Tema del examen"
             value={examTopic}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setExamTopic(e.target.value)}
+            className={examTopicError ? "input-error" : ""}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => { setExamTopic(e.target.value); setExamTopicError(""); }}
           />
+          {examTopicError && <span className="field-error">{examTopicError}</span>}
           <div className="row">
             <input
               type="number"
@@ -1060,10 +1137,12 @@ export default function App() {
         </div>}
       </div>
 
-      <div className="card">
-        <h3>Estado</h3>
-        <p>{status || "Sin acciones aún"}</p>
-      </div>
+      {/* Toast de notificación (reemplaza la tarjeta Estado) */}
+      {toast && (
+        <div className={`toast-notification toast-${toast.type}`}>
+          {toast.msg}
+        </div>
+      )}
 
       {/* Daily Recommendations panel */}
       {canUseBranch && (isDashboard || isProgreso) && (
