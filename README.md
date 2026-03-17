@@ -8,50 +8,75 @@
 
 ---
 
-## � Últimas incorporaciones
+## 📋 Últimas incorporaciones
 
-### 🐛 Hotfix — Arranque de app (Mar 2026)
-- **Corregido cuelgue al iniciar**: el bucle de polling de salud (`/health`) tenía bloques `try-catch` mal anidados que dejaban la app colgada indefinitamente en la pantalla de carga.  
-  Reescrito con estructura correcta: máx. 50 intentos × 1.2 s (~60 s de timeout), salida limpia tanto en éxito como en fallo.
+### 🐛 Hotfix — App colgada al arrancar (Mar 2026)
 
-### ✅ Banco de tests — 108 pruebas automatizadas (Mar 2026)
-- **Fixtures educativos reales**: temarios de matemáticas, programación y física en `core/tests/fixtures/` para pruebas con contenido real.
-- **50 nuevos tests de integración** (`core/tests/test_integration.py`):
-  - `TestBranchCRUD` (9): crear, listar y eliminar ramas con validación de errores.
-  - `TestTextExtraction` (8): extracción y chunking de los tres temarios.
-  - `TestDocumentIngest` (5): ingestión con embeddings y FAISS mockeados.
-  - `TestExamGeneration` (6): generación de exámenes por materia.
-  - `TestExamValidator` (6): validador de distractores y *confidence scoring*.
-  - `TestFullLifecycle` (1): ciclo completo rama → ingestión → examen → simulacro → borrado.
-  - `TestErrorValidation` (6): manejo de errores e inputs inválidos.
-  - `TestBancoPreguntas` (9): banco de preguntas sobre matemáticas, programación y física.
+**Problema**: al abrir MINDORA, la pantalla de carga se quedaba bloqueada indefinidamente y la app nunca llegaba a mostrar la interfaz principal.
 
-### 🎨 Validación inline en formularios (Mar 2026)
-- Sustituidos los mensajes de estado tipo *badge* por **validación inline por campo**: `branchNameError`, `fileError`, `questionError`, `examTopicError`, `learnPhraseError`.
-- Añadido sistema de **toast de notificaciones** (`showToast`) para confirmaciones y errores importantes, en lugar de la tarjeta de "Estado" permanente.
-- Nuevos estilos `.field-error`, `.input-error` y `.toast-notification` en `styles.css`.
+**Por qué ocurría**: el componente principal (`App.tsx`) lanza al arrancar un bucle de *health polling* que envía una petición a `/health` cada 1.2 s para saber si el backend Python ya está listo. Ese bucle tenía los bloques `try-catch` mal anidados: el `catch` estaba colocado dentro del `if` en lugar de fuera, rompiendo el flujo de control. El bucle nunca salía, la UI nunca recibía la señal de "backend listo" y el usuario veía la rueda girando para siempre.
 
-### 🧠 Fase 5 — Fine-tuning LoRA (Feb 2026)
-- Pipeline de dataset LoRA con ejemplos aprobados y exportación.
-- Script `train_lora.py` con dependencias de fine-tuning.
-- Autoload del adaptador LoRA en inferencia + estado de runtime visible en la UI.
-
-### 📷 Fase 3 — OCR automático (Feb 2026)
-- OCR automático en PDFs escaneados con **PyMuPDF + Tesseract**.
-- Extracción de imágenes embebidas en documentos.
-
-### 🤖 Fase 2 — Mejoras de respuesta (Feb 2026)
-- Postproceso anti-robot: las respuestas no parecen generadas por máquina.
-- *Few-shot templates* por modo de respuesta en `llm.py`.
-- Nuevos modos: `profesor`, `compañero`, `examen`, `pasos`, `corta`, `detallada`.
-- Aprendizaje por feedback del usuario (frases al diccionario personalizado).
-
-### 🔍 Fase 1 — RAG estructurado (Ene 2026)
-- Recuperación aumentada por recuperación (RAG) con fuentes citadas.
-- FAISS + embeddings locales (`all-MiniLM-L6-v2`).
-- Validador de distractores y *confidence scoring* por pregunta y examen resuelto.
+**Cómo se resolvió**: se reescribió completamente la función `poll()` con la estructura correcta. Ahora tiene un límite explícito de 50 intentos (~60 s máximo). Si el backend responde, carga automáticamente el estado del modelo LLM y las ramas disponibles. Si agota los intentos sin respuesta, muestra un error claro en pantalla en lugar de quedarse bloqueado.
 
 ---
+
+### ✅ Banco de tests — 108 pruebas automatizadas (Mar 2026)
+
+**Por qué**: una aplicación que genera exámenes y evalúa alumnos necesita garantías de que cada pieza funciona correctamente antes de llegar al usuario. Sin tests automatizados, cualquier cambio puede romper silenciosamente la generación de exámenes, la subida de documentos o el ciclo completo de simulacro sin que nadie se entere hasta que el usuario lo sufre.
+
+**Qué se hizo**: se crearon tres temarios educativos reales en `core/tests/fixtures/` (matemáticas, programación y física) para que los tests trabajen con contenido auténtico y no con texto artificial. Sobre esos fixtures se construyó un banco de 50 tests de integración en `core/tests/test_integration.py`:
+
+- **`TestBranchCRUD`** (9 tests): verifica que se pueden crear ramas por asignatura, listarlas y eliminarlas, y que los errores —nombre vacío, rama duplicada, rama inexistente— se rechazan correctamente con el código HTTP adecuado.
+- **`TestTextExtraction`** (8 tests): comprueba que el extractor de texto parte los tres temarios en fragmentos (*chunks*) del tamaño correcto sin perder contenido ni generar fragmentos vacíos.
+- **`TestDocumentIngest`** (5 tests): valida que un documento sube correctamente, se generan sus embeddings y se indexa en FAISS para que la búsqueda semántica posterior funcione sobre él.
+- **`TestExamGeneration`** (6 tests): asegura que el generador produce exámenes con el número exacto de preguntas pedido, en el formato correcto (test, desarrollo o mixto) y respetando el nivel de dificultad indicado.
+- **`TestExamValidator`** (6 tests): comprueba el validador de distractores —que las respuestas incorrectas no sean demasiado obvias ni idénticas a la correcta— y el *confidence score* asignado a cada pregunta.
+- **`TestFullLifecycle`** (1 test): ejecuta el ciclo completo end-to-end: crea una rama → sube un documento → genera un examen → lanza un simulacro → borra la rama. Si este test pasa, la app funciona de principio a fin.
+- **`TestErrorValidation`** (6 tests): garantiza que todos los endpoints rechazan inputs inválidos con los códigos HTTP y mensajes de error correctos, sin lanzar excepciones no controladas.
+- **`TestBancoPreguntas`** (9 tests): banco de preguntas concretas sobre los tres temarios para verificar que el sistema RAG recupera el contexto correcto y genera respuestas coherentes con el contenido subido.
+
+---
+
+### 🎨 Validación inline en formularios (Mar 2026)
+
+**Problema**: cuando el usuario cometía un error —nombre de rama vacío, archivo no seleccionado, pregunta demasiado corta— aparecía un *badge* de estado genérico en otro punto de la pantalla. El usuario no sabía exactamente qué campo estaba mal y el feedback llegaba tarde.
+
+**Qué se hizo**: se eliminaron los badges de error genéricos y se implementó validación inline directamente bajo cada campo del formulario. Cada input tiene su propio estado de error (`branchNameError`, `fileError`, `questionError`, `examTopicError`, `learnPhraseError`) que aparece en rojo justo debajo del campo afectado en el momento en que el usuario intenta enviar. Para las confirmaciones de éxito y los errores de operación (subida completada, rama eliminada, fallo de red…) se añadió un sistema de **toasts**: notificaciones emergentes que aparecen 3.5 s y desaparecen solas, sin ocupar espacio permanente en la interfaz ni exigir que el usuario las cierre manualmente.
+
+---
+
+### 🧠 Fase 5 — Fine-tuning LoRA (Feb 2026)
+
+**Por qué**: el modelo base (Mistral 7B) responde bien en general, pero no conoce el estilo pedagógico concreto de MINDORA. Con fine-tuning LoRA se puede especializar el modelo con ejemplos reales de buenas respuestas aprobadas por el usuario, mejorando la calidad de forma progresiva sin necesidad de reentrenar los 7.000 millones de parámetros del modelo base.
+
+**Qué hace**: se construyó un pipeline que recoge los pares pregunta-respuesta que el usuario ha valorado positivamente, los convierte en un dataset JSONL compatible con LoRA, y los usa para ajustar un adaptador ligero (pocos MB) que se superpone al modelo base. El script `train_lora.py` gestiona el entrenamiento localmente. Al arrancar la app, el backend detecta automáticamente si existe un adaptador entrenado y lo carga sobre el modelo base, indicando en la UI si el modo fine-tuning está activo o no.
+
+---
+
+### 📷 Fase 3 — OCR automático en PDFs (Feb 2026)
+
+**Por qué**: muchos apuntes universitarios son PDFs escaneados —fotos de páginas físicas— y no PDFs con texto real incrustado. Sin OCR, esos documentos se subirían sin error pero el sistema no extraería ningún texto, haciéndolos completamente inútiles para el chat y los exámenes.
+
+**Qué hace**: al ingestar un PDF, el sistema detecta automáticamente si las páginas contienen texto real o son imágenes escaneadas. En el segundo caso, usa **PyMuPDF** para renderizar cada página como imagen y **Tesseract** para extraer el texto mediante reconocimiento óptico de caracteres. Además extrae las imágenes embebidas en documentos mixtos. El resultado es siempre el mismo: texto limpio listo para embeddings y RAG, independientemente de si el PDF era nativo o escaneado.
+
+---
+
+### 🤖 Fase 2 — Calidad y personalización de respuestas (Feb 2026)
+
+**Por qué**: las respuestas del modelo base suenan a menudo robóticas, excesivamente formales o innecesariamente largas. Un alumno necesita respuestas adaptadas a cómo está estudiando: a veces quiere un resumen rápido, otras un paso a paso detallado, otras que se lo expliquen como un compañero.
+
+**Qué hace**: se añadieron seis modos de respuesta seleccionables (`corta`, `detallada`, `pasos`, `examen`, `profesor`, `compañero`), implementados como *few-shot templates* en `llm.py`: cada modo incluye ejemplos concretos del estilo esperado que guían al modelo sin reentrenamiento. Se añadió también un postproceso que elimina frases típicamente robóticas ("Como modelo de lenguaje…", "Según mi conocimiento de corte en…") y normaliza el formato de salida. Finalmente, el usuario puede marcar respuestas como buenas o malas; el sistema guarda esas preferencias en un diccionario personalizado que influye en las respuestas futuras.
+
+---
+
+### 🔍 Fase 1 — RAG estructurado con fuentes citadas (Ene 2026)
+
+**Por qué**: sin RAG (*Retrieval-Augmented Generation*), el modelo solo puede responder desde su conocimiento general de entrenamiento, sin acceso al contenido específico de los apuntes del alumno. El resultado serían respuestas genéricas que no reflejan lo que el profesor explicó ni los conceptos del temario concreto.
+
+**Qué hace**: cuando el usuario hace una pregunta, el sistema la convierte en un vector de embeddings usando `all-MiniLM-L6-v2` —modelo local, sin necesidad de internet— y busca en el índice FAISS los fragmentos de los apuntes subidos que más se parecen semánticamente a la pregunta. Esos fragmentos se inyectan como contexto en el prompt del modelo, que genera una respuesta basada en ellos e indica las fuentes (documento y página) de donde viene la información. Para los exámenes, se añadió un validador que comprueba que los distractores sean plausibles pero claramente distintos de la correcta, y asigna un *confidence score* a cada pregunta para que el sistema descarte automáticamente las de baja calidad.
+
+---
+
 
 ## �📦 Descargar e instalar (usuarios finales)
 
