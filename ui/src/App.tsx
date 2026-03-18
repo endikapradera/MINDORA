@@ -79,6 +79,7 @@ export default function App() {
   const [selectedStudyDocumentId, setSelectedStudyDocumentId] = useState<number | "all">("all");
   const [question, setQuestion] = useState("");
   const [responseStyle, setResponseStyle] = useState<ResponseStyle>("auto");
+  const [quickAction, setQuickAction] = useState<"facil" | "examen" | "ejemplos" | "pasos" | "minuto">("facil");
   const [lastAnswerStyle, setLastAnswerStyle] = useState<ResponseStyle | null>(null);
   const [lastQuestion, setLastQuestion] = useState("");
   const [sessionId, setSessionId] = useState<string>(crypto.randomUUID());
@@ -91,11 +92,16 @@ export default function App() {
   const [examDifficulty, setExamDifficulty] = useState("media");
   const [examType, setExamType] = useState<ExamType>("mixto");
   const [examCount, setExamCount] = useState(10);
+  const [retrievalDepth, setRetrievalDepth] = useState(6);
+  const [examQualityMode, setExamQualityMode] = useState<"rapido" | "equilibrado" | "maximo">("equilibrado");
   const [examId, setExamId] = useState("");
+  const [examAvgConfidence, setExamAvgConfidence] = useState<number | null>(null);
+  const [examWarnings, setExamWarnings] = useState<string[]>([]);
   const [examContent, setExamContent] = useState("");
   const [answerKeyContent, setAnswerKeyContent] = useState("");
   const [examSolveFile, setExamSolveFile] = useState<File | null>(null);
   const [solvedExamContent, setSolvedExamContent] = useState("");
+  const [solvedExamConfidence, setSolvedExamConfidence] = useState<number | null>(null);
   const [simulationDuration, setSimulationDuration] = useState(30);
   const [simulationId, setSimulationId] = useState("");
   const [simulationQuestions, setSimulationQuestions] = useState<SimulationQuestion[]>([]);
@@ -138,6 +144,12 @@ export default function App() {
     const sum = completedSimulations.reduce((acc, x) => acc + Number(x.score_percent ?? 0), 0);
     return Math.round((sum / completedSimulations.length) * 100) / 100;
   }, [completedSimulations]);
+
+  const examTopK = useMemo(() => {
+    if (examQualityMode === "maximo") return 12;
+    if (examQualityMode === "equilibrado") return 8;
+    return 6;
+  }, [examQualityMode]);
 
   const isDashboard = activeSection === "dashboard";
   const isTemarios = activeSection === "temarios";
@@ -395,12 +407,7 @@ export default function App() {
     try {
       setIsUploading(true);
       setUploadProgress(0);
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + Math.random() * 30, 90));
-      }, 200);
-      const result = await ingestDocument(selectedBranch, file);
-      clearInterval(progressInterval);
-      setUploadProgress(100);
+      const result = await ingestDocument(selectedBranch, file, (percent) => setUploadProgress(percent));
       showToast(`✅ Documento subido: ${file.name} (${result.chunks} fragmentos)`);
       await loadDocuments(selectedBranch);
       setFile(null);
@@ -423,7 +430,7 @@ export default function App() {
       const result = await queryRag(
         selectedBranch,
         question,
-        5,
+        retrievalDepth,
         selectedStudyDocumentId === "all" ? undefined : selectedStudyDocumentId,
       );
       setChunks(result.results.map((r) => r.text));
@@ -442,7 +449,7 @@ export default function App() {
       const result = await askRag(
         selectedBranch,
         question,
-        5,
+        retrievalDepth,
         responseStyle,
         sessionId,
         selectedStudyDocumentId === "all" ? undefined : selectedStudyDocumentId,
@@ -500,7 +507,7 @@ export default function App() {
   async function handleGenerateStudyPack() {
     if (!examTopic || !canUseBranch) return;
     try {
-      const result = await generateStudyPack(selectedBranch, examTopic, 6);
+      const result = await generateStudyPack(selectedBranch, examTopic, Math.min(12, retrievalDepth + 2));
       setStudySummaryShort(result.summary_short);
       setStudySummaryLong(result.summary_long);
       setStudyIdeas(result.key_ideas);
@@ -615,10 +622,12 @@ export default function App() {
       return;
     }
     try {
-      const result = await generateExam(selectedBranch, examTopic, examCount, examDifficulty, 6, examType);
+      const result = await generateExam(selectedBranch, examTopic, examCount, examDifficulty, examTopK, examType);
       setExamId(result.exam_id);
       setExamContent(result.exam_content);
       setAnswerKeyContent(result.answer_key_content);
+      setExamAvgConfidence(result.avg_confidence ?? null);
+      setExamWarnings(result.distractor_warnings ?? []);
       showToast("✅ Examen generado correctamente");
     } catch {
       setExamTopicError("Error al generar el examen. Asegúrate de tener documentos en la rama.");
@@ -670,6 +679,7 @@ export default function App() {
     try {
       const result = await solveUploadedExam(selectedBranch, examSolveFile, 8);
       setSolvedExamContent(result.solutions);
+      setSolvedExamConfidence(result.avg_solution_confidence ?? null);
       setStatus("Examen subido y resuelto");
     } catch {
       setStatus("Error resolviendo examen subido");
@@ -870,7 +880,7 @@ export default function App() {
 
       {/* ── Main UI (shown only when backend ready & model found) ────────── */}
       {backendReady && modelFound !== false && <div className="header-bottom">
-        <div className="row">
+        <div className="row top-toolbar-row">
           <select
             value={selectedBranch}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setSelectedBranch(e.target.value)}
@@ -882,6 +892,31 @@ export default function App() {
               </option>
             ))}
           </select>
+
+          <select
+            value={activeSection}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setActiveSection(e.target.value as AppSection)}
+            title="Ir a sección"
+          >
+            <option value="dashboard">Dashboard</option>
+            <option value="temarios">Temarios</option>
+            <option value="estudiar">Estudiar</option>
+            <option value="examenes">Exámenes</option>
+            <option value="progreso">Progreso</option>
+            <option value="config">Configuración</option>
+          </select>
+
+          <select
+            value={retrievalDepth}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setRetrievalDepth(Number(e.target.value))}
+            title="Profundidad de recuperación"
+          >
+            <option value={4}>Búsqueda rápida (4)</option>
+            <option value={6}>Búsqueda equilibrada (6)</option>
+            <option value={8}>Búsqueda profunda (8)</option>
+            <option value={10}>Búsqueda máxima (10)</option>
+          </select>
+
           <button onClick={() => void handleRefresh()}>Refrescar</button>
         </div>
       </div>}
@@ -1026,13 +1061,17 @@ export default function App() {
             </button>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <button onClick={() => handleQuickExplain("facil")}>Explícamelo fácil</button>
-            <button onClick={() => handleQuickExplain("examen")}>Como examen</button>
-          </div>
-          <div className="row" style={{ marginTop: 8 }}>
-            <button onClick={() => handleQuickExplain("ejemplos")}>Con ejemplos</button>
-            <button onClick={() => handleQuickExplain("pasos")}>Paso a paso</button>
-            <button onClick={() => handleQuickExplain("minuto")}>En 1 minuto</button>
+            <select
+              value={quickAction}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => setQuickAction(e.target.value as "facil" | "examen" | "ejemplos" | "pasos" | "minuto")}
+            >
+              <option value="facil">Explícamelo fácil</option>
+              <option value="examen">Como examen</option>
+              <option value="ejemplos">Con ejemplos</option>
+              <option value="pasos">Paso a paso</option>
+              <option value="minuto">En 1 minuto</option>
+            </select>
+            <button onClick={() => handleQuickExplain(quickAction)}>Aplicar modo rápido</button>
             <button onClick={() => setResponseStyle("profesor")}>Modo profesor</button>
             <button onClick={() => setResponseStyle("companero")}>Modo compañero</button>
           </div>
@@ -1057,75 +1096,112 @@ export default function App() {
             onChange={(e: ChangeEvent<HTMLInputElement>) => { setExamTopic(e.target.value); setExamTopicError(""); }}
           />
           {examTopicError && <span className="field-error">{examTopicError}</span>}
-          <div className="row">
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={examCount}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setExamCount(Number(e.target.value))}
-            />
-            <select
-              value={examDifficulty}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => setExamDifficulty(e.target.value)}
-            >
-              <option value="baja">Baja</option>
-              <option value="media">Media</option>
-              <option value="alta">Alta</option>
-            </select>
-            <select
-              value={examType}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => setExamType(e.target.value as ExamType)}
-            >
-              <option value="mixto">Mixto</option>
-              <option value="test_simple">Test simple</option>
-              <option value="test_multiple">Test múltiple</option>
-              <option value="desarrollo">Desarrollo</option>
-            </select>
-          </div>
-          <button onClick={handleExam} disabled={!canUseBranch}>
-            Generar
-          </button>
-          <button onClick={handleGenerateStudyPack} disabled={!canUseBranch || !examTopic}>
-            Generar pack de estudio
-          </button>
-          <div className="row" style={{ marginTop: 10 }}>
-            <input
-              type="number"
-              min={5}
-              max={240}
-              value={simulationDuration}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setSimulationDuration(Number(e.target.value))}
-            />
-            <button onClick={handleStartSimulation} disabled={!canUseBranch || !examId}>
-              Iniciar simulacro real
-            </button>
-          </div>
-          <div className="row">
-            <button onClick={handleExportPdf} disabled={!examId || !canUseBranch}>
-              Exportar PDF examen
-            </button>
-            <button onClick={handleExportDocx} disabled={!examId || !canUseBranch}>
-              Exportar DOCX examen
-            </button>
-          </div>
-          <div className="row">
-            <button onClick={handleExportAnswerKeyPdf} disabled={!examId || !canUseBranch}>
-              Exportar PDF solucionario
-            </button>
-            <button onClick={handleExportAnswerKeyDocx} disabled={!examId || !canUseBranch}>
-              Exportar DOCX solucionario
-            </button>
-          </div>
-          <div className="row" style={{ marginTop: 10 }}>
-            <input
-              type="file"
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setExamSolveFile(e.target.files?.[0] ?? null)}
-            />
-            <button onClick={handleSolveUploadedExam} disabled={!examSolveFile || !canUseBranch}>
-              Subir y resolver examen
-            </button>
-          </div>
+
+          <details className="menu-panel" open>
+            <summary>⚙️ Configuración del examen</summary>
+            <div className="menu-panel-body">
+              <div className="form-grid-4">
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={examCount}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setExamCount(Number(e.target.value))}
+                  title="Número de preguntas"
+                />
+                <select
+                  value={examDifficulty}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setExamDifficulty(e.target.value)}
+                  title="Dificultad"
+                >
+                  <option value="baja">Dificultad baja</option>
+                  <option value="media">Dificultad media</option>
+                  <option value="alta">Dificultad alta</option>
+                </select>
+                <select
+                  value={examType}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setExamType(e.target.value as ExamType)}
+                  title="Tipo de examen"
+                >
+                  <option value="mixto">Tipo mixto</option>
+                  <option value="test_simple">Test simple</option>
+                  <option value="test_multiple">Test múltiple</option>
+                  <option value="desarrollo">Desarrollo</option>
+                </select>
+                <select
+                  value={examQualityMode}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setExamQualityMode(e.target.value as "rapido" | "equilibrado" | "maximo")}
+                  title="Modo de calidad"
+                >
+                  <option value="rapido">Modo rápido (top_k 6)</option>
+                  <option value="equilibrado">Modo equilibrado (top_k 8)</option>
+                  <option value="maximo">Modo máximo (top_k 12)</option>
+                </select>
+              </div>
+              <div className="row action-row">
+                <button onClick={handleExam} disabled={!canUseBranch}>
+                  Generar examen
+                </button>
+                <button onClick={handleGenerateStudyPack} disabled={!canUseBranch || !examTopic}>
+                  Generar pack de estudio
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <details className="menu-panel">
+            <summary>📤 Exportación</summary>
+            <div className="menu-panel-body">
+              <div className="row action-row">
+                <button onClick={handleExportPdf} disabled={!examId || !canUseBranch}>Exportar PDF examen</button>
+                <button onClick={handleExportDocx} disabled={!examId || !canUseBranch}>Exportar DOCX examen</button>
+                <button onClick={handleExportAnswerKeyPdf} disabled={!examId || !canUseBranch}>Exportar PDF solucionario</button>
+                <button onClick={handleExportAnswerKeyDocx} disabled={!examId || !canUseBranch}>Exportar DOCX solucionario</button>
+              </div>
+            </div>
+          </details>
+
+          <details className="menu-panel">
+            <summary>⏱️ Simulacro y resolución</summary>
+            <div className="menu-panel-body">
+              <div className="row action-row">
+                <input
+                  type="number"
+                  min={5}
+                  max={240}
+                  value={simulationDuration}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSimulationDuration(Number(e.target.value))}
+                />
+                <button onClick={handleStartSimulation} disabled={!canUseBranch || !examId}>
+                  Iniciar simulacro real
+                </button>
+              </div>
+              <div className="row action-row">
+                <input
+                  type="file"
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setExamSolveFile(e.target.files?.[0] ?? null)}
+                />
+                <button onClick={handleSolveUploadedExam} disabled={!examSolveFile || !canUseBranch}>
+                  Subir y resolver examen
+                </button>
+              </div>
+            </div>
+          </details>
+
+          {examAvgConfidence !== null && (
+            <div className="result" style={{ marginTop: 10 }}>
+              <strong>Calidad del examen:</strong> {Math.round(examAvgConfidence * 100)}%
+              {examWarnings.length > 0 && (
+                <>
+                  <br />
+                  <strong>Ajustes recomendados:</strong>
+                  <ul>
+                    {examWarnings.slice(0, 5).map((w, i) => <li key={`warn-${i}`}>{w}</li>)}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
         </div>}
       </div>
 
@@ -1377,6 +1453,11 @@ export default function App() {
       {isExamenes && solvedExamContent && (
         <div className="card">
           <h3>Resolución de examen subido</h3>
+          {solvedExamConfidence !== null && (
+            <p className="badge" style={{ marginBottom: 10 }}>
+              Confianza media estimada: {Math.round(solvedExamConfidence * 100)}%
+            </p>
+          )}
           <div className="result">{solvedExamContent}</div>
         </div>
       )}

@@ -156,6 +156,60 @@ def _parse_fallback_questions(raw: str) -> list[dict]:
     return out
 
 
+def _normalize_question_statement(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _dedupe_questions(questions: list[dict]) -> list[dict]:
+    seen: set[str] = set()
+    out: list[dict] = []
+    for q in questions:
+        key = _normalize_question_statement(q.get("statement", ""))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(q)
+    for i, q in enumerate(out, start=1):
+        q["number"] = i
+    return out
+
+
+def _complete_missing_questions(
+    *,
+    topic: str,
+    difficulty: str,
+    exam_type: str,
+    context_block: str,
+    current_questions: list[dict],
+    missing: int,
+) -> list[dict]:
+    if missing <= 0:
+        return []
+
+    existing_statements = "\n".join(f"- {q.get('statement', '')}" for q in current_questions[:40])
+    completion_prompt = (
+        "Completa el examen sin repetir preguntas ya existentes.\n"
+        "Devuelve SOLO bloques en formato exacto:\n"
+        "### Pregunta N\n"
+        "Tipo: test_simple | test_multiple | desarrollo\n"
+        "Enunciado: ...\n"
+        "Opciones:\n"
+        "A) ...\nB) ...\nC) ...\nD) ...\n"
+        "Respuesta: ...\n"
+        "Explicacion: ...\n"
+        "Sin texto adicional fuera del formato.\n"
+        f"Genera exactamente {missing} preguntas nuevas.\n"
+        f"Tema: {topic}. Dificultad: {difficulty}. Tipo objetivo: {exam_type}.\n"
+        f"Preguntas ya existentes (NO repetir):\n{existing_statements}\n\n"
+        f"Contexto:\n{context_block}\n"
+    )
+    extra_raw = generate_text(completion_prompt, max_tokens=900, temperature=0.15)
+    extra = _parse_generated_questions(extra_raw)
+    if not extra:
+        extra = _parse_fallback_questions(extra_raw)
+    return extra
+
+
 def _render_exam_statement(questions: list[dict], topic: str, difficulty: str, exam_type: str) -> str:
     lines = [
         f"EXAMEN - {topic}",
@@ -216,6 +270,8 @@ def generate_exam(
         "Explicacion: ...\n"
         "Para preguntas de desarrollo, deja la sección Opciones vacía.\n"
         "Para test_multiple, la Respuesta debe incluir varias letras separadas por coma (ej: A,C).\n"
+        "No dejes ninguna pregunta sin respuesta.\n"
+        "No repitas enunciados ni opciones casi idénticas.\n"
         "No incluyas texto fuera de ese formato.\n\n"
         f"Contexto:\n{context_block}\n\n"
         f"Instrucción: {prompt}"
@@ -239,6 +295,20 @@ def generate_exam(
         questions = _parse_generated_questions(repaired)
         if not questions:
             questions = _parse_fallback_questions(raw_content)
+
+    questions = _dedupe_questions(questions)
+
+    if len(questions) < num_questions:
+        missing = num_questions - len(questions)
+        extra_questions = _complete_missing_questions(
+            topic=topic,
+            difficulty=difficulty,
+            exam_type=exam_type,
+            context_block=context_block,
+            current_questions=questions,
+            missing=missing,
+        )
+        questions = _dedupe_questions(questions + extra_questions)
 
     if len(questions) < max(1, min(num_questions, 3)):
         raise RuntimeError("No se pudo generar un examen estructurado. Intenta con otro temario o topic más concreto.")

@@ -84,17 +84,50 @@ export async function deleteBranch(name: string): Promise<{ status: string }> {
   return res.json();
 }
 
-export async function ingestDocument(branch: string, file: File): Promise<{ document_id: number; chunks: number }> {
+export async function ingestDocument(
+  branch: string,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<{ document_id: number; chunks: number }> {
   const form = new FormData();
   form.append("branch", branch);
   form.append("file", file);
 
-  const res = await fetch(`${BASE_URL}/api/documents/ingest`, {
-    method: "POST",
-    body: form
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE_URL}/api/documents/ingest`);
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) return;
+      const percent = Math.round((event.loaded / event.total) * 100);
+      onProgress?.(Math.max(0, Math.min(100, percent)));
+    });
+
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState !== XMLHttpRequest.DONE) return;
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const payload = JSON.parse(xhr.responseText) as { document_id: number; chunks: number };
+          onProgress?.(100);
+          resolve(payload);
+        } catch {
+          reject(new Error("Respuesta inválida en la ingesta"));
+        }
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(xhr.responseText) as { detail?: string };
+        reject(new Error(payload.detail || "Error en ingesta"));
+      } catch {
+        reject(new Error("Error en ingesta"));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("No se pudo conectar con el servidor durante la ingesta"));
+    xhr.send(form);
   });
-  if (!res.ok) throw await toApiError(res, "Error en ingesta");
-  return res.json();
 }
 
 export async function queryRag(branch: string, question: string, topK: number, documentId?: number): Promise<QueryResponse> {
@@ -157,7 +190,7 @@ export async function generateExam(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ topic, num_questions: numQuestions, difficulty, top_k: topK, exam_type: examType })
   });
-  if (!res.ok) throw new Error("Error generando examen");
+  if (!res.ok) throw await toApiError(res, "Error generando examen");
   return res.json();
 }
 

@@ -57,6 +57,8 @@ export type ExamGenerateResponse = {
   filename: string;
   exam_content: string;
   answer_key_content: string;
+  avg_confidence: number;
+  distractor_warnings: string[];
 };
 
 export type ExamType = "test_simple" | "test_multiple" | "desarrollo" | "mixto";
@@ -69,6 +71,7 @@ export type ExamExportResponse = {
 
 export type ExamSolveUploadResponse = {
   solutions: string;
+  avg_solution_confidence?: number | null;
 };
 
 export type SimulationQuestion = {
