@@ -73,6 +73,8 @@ export default function App() {
   const [branchName, setBranchName] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [selectedStudyDocumentId, setSelectedStudyDocumentId] = useState<number | "all">("all");
   const [question, setQuestion] = useState("");
@@ -391,11 +393,24 @@ export default function App() {
       return;
     }
     try {
+      setIsUploading(true);
+      setUploadProgress(0);
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => Math.min(prev + Math.random() * 30, 90));
+      }, 200);
       const result = await ingestDocument(selectedBranch, file);
-      showToast(`✅ Documento subido. Fragmentos: ${result.chunks}`);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      showToast(`✅ Documento subido: ${file.name} (${result.chunks} fragmentos)`);
       await loadDocuments(selectedBranch);
       setFile(null);
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+      }, 1000);
     } catch (err) {
+      setIsUploading(false);
+      setUploadProgress(0);
       setFileError(getErrorMessage(err, "Error al subir el documento. Comprueba que el formato es compatible."));
     }
   }
@@ -935,15 +950,26 @@ export default function App() {
         {isTemarios && <div className="card">
           <h3>Ingesta de documentos</h3>
           {!canUseBranch && <span className="field-error">Selecciona una rama antes de subir documentos.</span>}
-          <input
-            type="file"
-            className={fileError ? "input-error" : ""}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => { setFile(e.target.files?.[0] ?? null); setFileError(""); }}
-          />
+          <div className="upload-form-group">
+            <input
+              type="file"
+              className={fileError ? "input-error" : ""}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => { setFile(e.target.files?.[0] ?? null); setFileError(""); }}
+              disabled={isUploading}
+            />
+            <button onClick={handleIngest} disabled={!canUseBranch || isUploading}>
+              {isUploading ? "Subiendo..." : "Subir"}
+            </button>
+          </div>
+          {isUploading && (
+            <div className="upload-progress">
+              <div className="progress-bar-container">
+                <div className="progress-bar-fill" style={{ width: `${uploadProgress}%` }}></div>
+              </div>
+              <span className="progress-text">{Math.round(uploadProgress)}%</span>
+            </div>
+          )}
           {fileError && <span className="field-error">{fileError}</span>}
-          <button onClick={handleIngest} disabled={!canUseBranch}>
-            Subir documento
-          </button>
           {documents.length > 0 && (
             <div className="result" style={{ marginTop: 12 }}>
               <strong>Documentos:</strong>
