@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   askRag,
   createBranch,
@@ -22,30 +22,17 @@ import {
   startExamSimulation,
   submitExamSimulation,
   sendFeedback,
-  queryRag
 } from "./api";
 import type {
   Branch,
   DailyRecommendationItem,
   DictionaryEntry,
   DocumentItem,
-  ResponseStyle,
   ExamType,
   SimulationQuestion,
   ExamSimulationSubmitResponse,
   ExamSimulationHistoryItem
 } from "./types";
-
-function styleLabel(style: ResponseStyle): string {
-  if (style === "auto") return "Auto";
-  if (style === "corta") return "Corta";
-  if (style === "detallada") return "Detallada";
-  if (style === "pasos") return "Por pasos";
-  if (style === "examen") return "Modo examen";
-  if (style === "profesor") return "Modo profesor";
-  if (style === "companero") return "Modo compañero";
-  return "Detallada por pasos";
-}
 
 function formatSeconds(totalSeconds: number): string {
   const seconds = Math.max(0, totalSeconds);
@@ -59,6 +46,11 @@ function formatSeconds(totalSeconds: number): string {
 }
 
 type AppSection = "dashboard" | "temarios" | "estudiar" | "examenes" | "progreso" | "config";
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -78,16 +70,12 @@ export default function App() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [selectedStudyDocumentId, setSelectedStudyDocumentId] = useState<number | "all">("all");
   const [question, setQuestion] = useState("");
-  const [responseStyle, setResponseStyle] = useState<ResponseStyle>("auto");
-  const [quickAction, setQuickAction] = useState<"facil" | "examen" | "ejemplos" | "pasos" | "minuto">("facil");
-  const [lastAnswerStyle, setLastAnswerStyle] = useState<ResponseStyle | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [lastQuestion, setLastQuestion] = useState("");
   const [sessionId, setSessionId] = useState<string>(crypto.randomUUID());
   const [answer, setAnswer] = useState("");
   const [learnPhraseText, setLearnPhraseText] = useState("");
-  const [contexts, setContexts] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
-  const [chunks, setChunks] = useState<string[]>([]);
   const [examTopic, setExamTopic] = useState("");
   const [examDifficulty, setExamDifficulty] = useState("media");
   const [examType, setExamType] = useState<ExamType>("mixto");
@@ -422,86 +410,87 @@ export default function App() {
     }
   }
 
-  async function handleQuery() {
-    setQuestionError("");
-    if (!canUseBranch) { setQuestionError("Selecciona una rama primero."); return; }
-    if (!question.trim()) { setQuestionError("Escribe una pregunta antes de buscar contexto."); return; }
-    try {
-      const result = await queryRag(
-        selectedBranch,
-        question,
-        retrievalDepth,
-        selectedStudyDocumentId === "all" ? undefined : selectedStudyDocumentId,
-      );
-      setChunks(result.results.map((r) => r.text));
-      setStatus(`Resultados: ${result.results.length}`);
-    } catch {
-      showToast("Error al buscar contexto", "err");
-    }
-  }
-
   async function handleAsk() {
     setQuestionError("");
     if (!canUseBranch) { setQuestionError("Selecciona una rama primero."); return; }
     if (!question.trim()) { setQuestionError("Escribe una pregunta para continuar."); return; }
     if (question.trim().length < 3) { setQuestionError("La pregunta debe tener al menos 3 caracteres."); return; }
     try {
+      const userMessage: ChatMessage = {
+        role: "user",
+        content: question,
+        createdAt: new Date().toISOString(),
+      };
+      setChatMessages((prev) => [...prev, userMessage]);
+
       const result = await askRag(
         selectedBranch,
         question,
         retrievalDepth,
-        responseStyle,
+        "profesor",
         sessionId,
         selectedStudyDocumentId === "all" ? undefined : selectedStudyDocumentId,
       );
       setAnswer(result.answer);
-      setContexts(result.contexts);
       setSources(result.sources ?? []);
-      setLastAnswerStyle(responseStyle);
       setLastQuestion(question);
+      const assistantMessage: ChatMessage = {
+        role: "assistant",
+        content: result.answer,
+        createdAt: new Date().toISOString(),
+      };
+      setChatMessages((prev) => [...prev, assistantMessage]);
       if (result.session_id) {
         setSessionId(result.session_id);
       }
       setStatus("Respuesta generada");
+      setQuestion("");
     } catch (err) {
       const detail = err instanceof Error ? err.message : "No se pudo procesar la pregunta";
-      setAnswer(
+      const fallbackMessage =
         "No he entendido o no he podido procesar esa pregunta en este momento.\n\n"
         + "Prueba así:\n"
         + "- 'Explícamelo fácil en 5 puntos'\n"
         + "- 'Resúmelo como si fuera para examen'\n"
-        + "- '¿Cuáles son las ideas clave de este tema?'"
-      );
-      setContexts([]);
+        + "- '¿Cuáles son las ideas clave de este tema?'";
+      setAnswer(fallbackMessage);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: fallbackMessage, createdAt: new Date().toISOString() },
+      ]);
       setSources([]);
       showToast(`Error: ${detail}`, "err");
     }
   }
 
-  function handleQuickExplain(mode: "facil" | "examen" | "ejemplos" | "pasos" | "minuto") {
-    if (!question.trim()) return;
-    if (mode === "facil") {
-      setQuestion(`Explícamelo fácil: ${question}`);
-      setResponseStyle("pasos");
+  function handleChatInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void handleAsk();
+    }
+  }
+
+  function handleSaveConversation() {
+    if (chatMessages.length === 0) {
+      showToast("No hay conversación para guardar", "err");
       return;
     }
-    if (mode === "examen") {
-      setQuestion(`Explícamelo como si fuera examen: ${question}`);
-      setResponseStyle("examen");
-      return;
-    }
-    if (mode === "ejemplos") {
-      setQuestion(`Explícamelo con ejemplos: ${question}`);
-      setResponseStyle("detallada");
-      return;
-    }
-    if (mode === "pasos") {
-      setQuestion(`Explícamelo paso a paso: ${question}`);
-      setResponseStyle("pasos");
-      return;
-    }
-    setQuestion(`Explícamelo en 1 minuto: ${question}`);
-    setResponseStyle("corta");
+    const lines = chatMessages.map((m) => {
+      const who = m.role === "user" ? "TÚ" : "MINDORA";
+      const timestamp = new Date(m.createdAt).toLocaleString();
+      return `[${timestamp}] ${who}:\n${m.content}`;
+    });
+    const payload = lines.join("\n\n-----------------------\n\n");
+    const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mindora-chat-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("✅ Conversación guardada en .txt");
   }
 
   async function handleGenerateStudyPack() {
@@ -578,7 +567,7 @@ export default function App() {
       return;
     }
     try {
-      await learnPhrase({ phrase, intent: "general", response_style: responseStyle });
+      await learnPhrase({ phrase, intent: "general", response_style: "profesor" });
       setLearnPhraseText("");
       showToast("✅ Frase aprendida en el diccionario");
     } catch {
@@ -587,11 +576,11 @@ export default function App() {
   }
 
   async function handleFeedback(useful: boolean) {
-    if (!lastQuestion || !lastAnswerStyle) return;
+    if (!lastQuestion) return;
     try {
       const res = await sendFeedback({
         question: lastQuestion,
-        response_style: lastAnswerStyle,
+        response_style: "profesor",
         useful,
         answer_text: answer,
         branch: selectedBranch
@@ -1017,74 +1006,71 @@ export default function App() {
           )}
         </div>}
 
-        {isEstudiar && <div className="card">
-          <h3>Pregunta (RAG)</h3>
-          <select
-            value={selectedStudyDocumentId}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => {
-              const v = e.target.value;
-              setSelectedStudyDocumentId(v === "all" ? "all" : Number(v));
-            }}
-          >
-            <option value="all">Todo el temario</option>
-            {documents.map((doc) => (
-              <option key={doc.id} value={doc.id}>{doc.filename}</option>
-            ))}
-          </select>
-          <textarea
-            rows={4}
-            placeholder="Escribe tu pregunta"
-            value={question}
-            className={questionError ? "input-error" : ""}
-            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => { setQuestion(e.target.value); setQuestionError(""); }}
-          />
-          {questionError && <span className="field-error">{questionError}</span>}
-          <select
-            value={responseStyle}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setResponseStyle(e.target.value as ResponseStyle)}
-          >
-            <option value="auto">Auto (por texto)</option>
-            <option value="corta">Corta</option>
-            <option value="detallada">Detallada</option>
-            <option value="pasos">Explicativa por pasos</option>
-            <option value="detallada_pasos">Detallada por pasos</option>
-            <option value="examen">Modo examen</option>
-            <option value="profesor">Modo profesor</option>
-            <option value="companero">Modo compañero</option>
-          </select>
-          <div className="row">
-            <button onClick={handleQuery} disabled={!canUseBranch}>
-              Ver contexto
-            </button>
-            <button onClick={handleAsk} disabled={!canUseBranch}>
-              Responder
-            </button>
+        {isEstudiar && <div className="card study-chat-card">
+          <h3>Chat de estudio</h3>
+          <div className="study-chat-layout">
+            <aside className="study-history-panel">
+              <h4>Historial</h4>
+              {chatMessages.filter((m) => m.role === "user").length === 0 ? (
+                <p className="history-empty">Aún no hay preguntas.</p>
+              ) : (
+                <ul>
+                  {chatMessages
+                    .filter((m) => m.role === "user")
+                    .slice(-8)
+                    .reverse()
+                    .map((m, idx) => (
+                      <li key={`${m.createdAt}-${idx}`}>{m.content}</li>
+                    ))}
+                </ul>
+              )}
+              <button onClick={handleSaveConversation} disabled={chatMessages.length === 0}>Guardar historial</button>
+            </aside>
+
+            <div className="study-chat-main">
+              <select
+                value={selectedStudyDocumentId}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                  const v = e.target.value;
+                  setSelectedStudyDocumentId(v === "all" ? "all" : Number(v));
+                }}
+              >
+                <option value="all">Todo el temario</option>
+                {documents.map((doc) => (
+                  <option key={doc.id} value={doc.id}>{doc.filename}</option>
+                ))}
+              </select>
+
+              <div className="chat-thread study-chat-thread">
+                {chatMessages.length === 0 && (
+                  <div className="chat-bubble assistant">
+                    <div className="chat-role">MINDORA</div>
+                    Hola, soy tu tutor IA. Pregúntame cualquier duda del temario y te ayudaré paso a paso.
+                  </div>
+                )}
+                {chatMessages.map((m, idx) => (
+                  <div key={`${m.createdAt}-${idx}`} className={`chat-bubble ${m.role === "user" ? "user" : "assistant"}`}>
+                    <div className="chat-role">{m.role === "user" ? "Tú" : "MINDORA"}</div>
+                    <div>{m.content}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="chat-composer">
+                <input
+                  placeholder="Escribe un mensaje..."
+                  value={question}
+                  className={questionError ? "input-error" : ""}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => { setQuestion(e.target.value); setQuestionError(""); }}
+                  onKeyDown={handleChatInputKeyDown}
+                />
+                <button onClick={handleAsk} disabled={!canUseBranch} className="send-btn" title="Enviar">
+                  ➤
+                </button>
+              </div>
+              {questionError && <span className="field-error" style={{ marginTop: 4 }}>{questionError}</span>}
+            </div>
           </div>
-          <div className="row" style={{ marginTop: 10 }}>
-            <select
-              value={quickAction}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => setQuickAction(e.target.value as "facil" | "examen" | "ejemplos" | "pasos" | "minuto")}
-            >
-              <option value="facil">Explícamelo fácil</option>
-              <option value="examen">Como examen</option>
-              <option value="ejemplos">Con ejemplos</option>
-              <option value="pasos">Paso a paso</option>
-              <option value="minuto">En 1 minuto</option>
-            </select>
-            <button onClick={() => handleQuickExplain(quickAction)}>Aplicar modo rápido</button>
-            <button onClick={() => setResponseStyle("profesor")}>Modo profesor</button>
-            <button onClick={() => setResponseStyle("companero")}>Modo compañero</button>
-          </div>
-          <div className="row" style={{ marginTop: 10 }}>
-            <input
-              placeholder="Enseña una frase (ej: 'hazlo super corto')"
-              value={learnPhraseText}
-              className={learnPhraseError ? "input-error" : ""}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => { setLearnPhraseText(e.target.value); setLearnPhraseError(""); }}
-            />
-            <button onClick={handleLearnPhrase}>Aprender frase</button>
-          </div>
-          {learnPhraseError && <span className="field-error" style={{ marginTop: 4 }}>{learnPhraseError}</span>}
         </div>}
 
         {isExamenes && <div className="card">
@@ -1308,26 +1294,9 @@ export default function App() {
         )}
       </div>}
 
-      {isEstudiar && chunks.length > 0 && (
+      {isEstudiar && chatMessages.length > 0 && (
         <div className="card">
-          <h3>Contextos</h3>
-          {chunks.map((c, idx) => (
-            <div key={idx} className="result">
-              {c}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {isEstudiar && answer && (
-        <div className="card">
-          <h3>Respuesta</h3>
-          {lastAnswerStyle && (
-            <p className="badge" style={{ marginBottom: 10 }}>
-              Estilo: {styleLabel(lastAnswerStyle)}
-            </p>
-          )}
-          <div className="result">{answer}</div>
+          <h3>Detalle de fuentes</h3>
           {sources.length > 0 && (
             <div className="result" style={{ marginTop: 10 }}>
               <strong>Fuentes:</strong>
@@ -1338,7 +1307,7 @@ export default function App() {
               </ul>
             </div>
           )}
-          <div className="row" style={{ marginTop: 10 }}>
+          <div className="row action-row" style={{ marginTop: 10 }}>
             <button onClick={() => handleFeedback(true)}>👍 Útil</button>
             <button onClick={() => handleFeedback(false)}>👎 No útil</button>
           </div>
