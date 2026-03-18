@@ -10,6 +10,62 @@
 
 ## 📋 Últimas incorporaciones
 
+### 💬 Chat de estudio renovado + guardado de conversación (Mar 2026)
+
+**Problema**: la sección de estudio mezclaba controles de estilos y botones que no siempre aportaban valor en el flujo principal. La experiencia no se sentía como un chat natural.
+
+**Qué se hizo**:
+
+- Se simplificó la interacción a formato **chat normal** (mensaje → respuesta del tutor).
+- Se eliminaron controles antiguos de estilo en la vista principal de estudio.
+- Se añadió botón **Guardar conversación** para exportar el historial a `.txt`.
+- Se rediseñó la interfaz del chat con layout moderno (historial lateral + hilo principal + composer compacto).
+
+Resultado: flujo más limpio, más rápido para estudiar y sin perder conversaciones importantes.
+
+---
+
+### 🧠 Reranker híbrido para mejorar precisión (Mar 2026)
+
+**Problema**: con apuntes densos o ruidosos, el recuperador podía priorizar fragmentos semánticamente cercanos pero didácticamente peores para responder una duda concreta.
+
+**Qué se hizo**:
+
+- Se añadió **reranking híbrido** (similitud semántica + señales léxicas + intención de la pregunta + metadatos).
+- Se añadió selección con **diversidad** para evitar exceso de fragmentos del mismo documento/tema.
+- Se reforzó la clasificación por tipo de contenido (definición, ejemplo, tabla, legal) para elegir mejor contexto.
+
+Resultado: menos mezcla de temas, mejores fuentes recuperadas y respuestas más fiables.
+
+---
+
+### 📝 Generación de examen más robusta (Mar 2026)
+
+**Problema**: en ciertos casos el LLM podía devolver preguntas repetidas o no llegar al número solicitado.
+
+**Qué se hizo**:
+
+- Dedupe de preguntas por enunciado normalizado.
+- Pase de completado para generar solo las preguntas faltantes cuando el primer intento no llega al total.
+- Métricas de calidad visibles en UI (confianza media + alertas de distractores).
+
+Resultado: generación de examen más consistente y útil para práctica real.
+
+---
+
+### ⬆️ Subida de documentos con progreso real (Mar 2026)
+
+**Problema**: el usuario no tenía feedback fiable del avance durante la subida.
+
+**Qué se hizo**:
+
+- Se implementó progreso real de upload (evento `progress`) con barra visual.
+- Se bloquean controles durante subida para evitar errores de interacción.
+
+Resultado: experiencia de ingesta más clara y profesional.
+
+---
+
 ### 🐛 Hotfix — App colgada al arrancar (Mar 2026)
 
 **Problema**: al abrir MINDORA, la pantalla de carga se quedaba bloqueada indefinidamente y la app nunca llegaba a mostrar la interfaz principal.
@@ -61,11 +117,11 @@
 
 ---
 
-### 🤖 Fase 2 — Calidad y personalización de respuestas (Feb 2026)
+### 🤖 Fase 2 — Calidad y personalización de respuestas (Feb 2026, base)
 
 **Por qué**: las respuestas del modelo base suenan a menudo robóticas, excesivamente formales o innecesariamente largas. Un alumno necesita respuestas adaptadas a cómo está estudiando: a veces quiere un resumen rápido, otras un paso a paso detallado, otras que se lo expliquen como un compañero.
 
-**Qué hace**: se añadieron seis modos de respuesta seleccionables (`corta`, `detallada`, `pasos`, `examen`, `profesor`, `compañero`), implementados como *few-shot templates* en `llm.py`: cada modo incluye ejemplos concretos del estilo esperado que guían al modelo sin reentrenamiento. Se añadió también un postproceso que elimina frases típicamente robóticas ("Como modelo de lenguaje…", "Según mi conocimiento de corte en…") y normaliza el formato de salida. Finalmente, el usuario puede marcar respuestas como buenas o malas; el sistema guarda esas preferencias en un diccionario personalizado que influye en las respuestas futuras.
+**Qué hace**: se construyó la base de estilo docente (plantillas y *few-shot*) en `llm.py` y postproceso anti-respuesta robótica. Actualmente, la experiencia principal de estudio se presenta en formato **chat natural con tutor-profesor**, manteniendo aprendizaje por feedback útil/no útil y diccionario de intenciones para personalización progresiva.
 
 ---
 
@@ -184,9 +240,10 @@ MINDORA/
 ## ✨ Características
 
 - 📚 **Ramas (temarios)**: crea ramas por asignatura, sube PDFs, Word, PowerPoint
-- 🤖 **Chat IA**: pregunta sobre los apuntes, respuestas sin internet
+- 🤖 **Chat IA tipo profesor**: conversación natural sobre tus apuntes, sin internet
+- 💾 **Guardar conversación**: exporta el historial de chat a `.txt`
 - 📝 **Generador de exámenes**: tipo test, desarrollo o mixto, ajustable por dificultad
-- 🔍 **Búsqueda semántica**: FAISS + embeddings locales (all-MiniLM-L6-v2)
+- 🔍 **Búsqueda semántica + reranker**: FAISS + embeddings locales + reordenado híbrido de contexto
 - 💬 **Asistente**: conversación libre sobre el contenido subido
 - 🗑️ **Gestión de ramas**: crea, selecciona y elimina con confirmación
 
@@ -200,7 +257,7 @@ MINDORA/
 | Desktop shell | Tauri v1 (Rust) |
 | Backend API | FastAPI + Uvicorn |
 | LLM local | llama-cpp-python (Mistral 7B Q4) |
-| Embeddings | sentence-transformers (all-MiniLM-L6-v2) |
+| Embeddings | sentence-transformers (multilingüe + fallback local) |
 | Vector store | FAISS |
 | Empaquetado | PyInstaller + NSIS (Windows) / hdiutil (macOS) |
 
