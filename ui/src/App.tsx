@@ -60,57 +60,6 @@ function formatSeconds(totalSeconds: number): string {
 
 type AppSection = "dashboard" | "temarios" | "estudiar" | "examenes" | "progreso" | "config";
 
-const DIMSEG_QUESTION_BANK: string[] = [
-  "¿Qué es la seguridad de la información?",
-  "¿Qué significa el concepto de riesgo en seguridad informática?",
-  "¿Qué es un riesgo residual?",
-  "¿Qué diferencia hay entre riesgo aceptable y riesgo inasumible?",
-  "¿Qué es la ingeniería social?",
-  "¿Qué es el phishing?",
-  "¿Qué es el vishing?",
-  "¿Qué es el shoulder surfing?",
-  "¿Qué es el dumpster diving?",
-  "¿Qué es un ataque de fuerza bruta?",
-  "¿Qué es un ataque por diccionario?",
-  "¿Qué es un ataque DoS?",
-  "¿Qué es un ataque DDoS?",
-  "¿Qué es un ataque Man in the Middle?",
-  "¿Qué es el DNS poisoning?",
-  "¿Qué es el spoofing?",
-  "¿Qué es una SQL Injection?",
-  "¿Qué es un ataque Zero-Day?",
-  "¿Qué es el clickjacking?",
-  "¿Qué diferencia hay entre codificar y cifrar?",
-  "Explícame las principales estrategias para la gestión del riesgo en seguridad informática.",
-  "Describe qué es la ingeniería social y cuáles son sus principales fases.",
-  "Explica las diferencias entre codificación y cifrado.",
-  "Describe los principales tipos de ataques a redes.",
-  "Explica cómo funcionan los ataques de contraseñas.",
-  "Analiza los ataques más comunes a aplicaciones web.",
-  "Explica el concepto de riesgo residual y su importancia en la gestión de riesgos.",
-  "Describe el proceso de explotación en un ataque de ingeniería social.",
-  "Explica técnicas para prevenir ataques informáticos.",
-  "Analiza la importancia de la gestión de riesgos en una organización.",
-  "Analiza cómo una organización puede reducir el riesgo residual tras aplicar controles.",
-  "Explica cómo se desarrolla un ataque de ingeniería social desde reconocimiento hasta explotación.",
-  "Describe amenazas a una red corporativa y medidas de defensa.",
-  "Explica cómo funcionan los ataques de denegación de servicio y su impacto.",
-  "Analiza el papel de la ingeniería social en incidentes actuales.",
-  "Explica cómo ataques a aplicaciones web comprometen datos organizacionales.",
-  "Describe medidas para prevenir ataques de phishing.",
-  "Analiza la importancia de la concienciación del usuario en seguridad.",
-  "Explícame qué es el phishing como si fuera un estudiante de primero.",
-  "Dame un ejemplo real de ataque de ingeniería social.",
-  "¿Cómo puedo protegerme de ataques de fuerza bruta?",
-  "¿Qué diferencia hay entre DoS y DDoS?",
-  "¿Por qué el factor humano es el eslabón más débil de la seguridad?",
-  "Explícame SQL Injection con un ejemplo sencillo.",
-  "¿Cómo funciona un ataque Man in the Middle?",
-  "¿Qué controles de seguridad pueden reducir el riesgo?",
-  "Resume el PDF 1-RESUMEN DIMSEG en 5 puntos clave.",
-  "Explícamelo fácil: quiero que me expliques el PDF 1-RESUMEN DIMSEG.",
-];
-
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -176,7 +125,6 @@ export default function App() {
   const [dailyRecsMsg, setDailyRecsMsg] = useState("");
   const [activeSection, setActiveSection] = useState<AppSection>("dashboard");
   const [darkMode, setDarkMode] = useState<boolean>(() => localStorage.getItem("mindora.theme") !== "light");
-  const [dimsegIdx, setDimsegIdx] = useState(0);
 
   const canUseBranch = useMemo(() => selectedBranch.length > 0, [selectedBranch]);
   const completedSimulations = useMemo(
@@ -289,20 +237,39 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  function getErrorMessage(err: unknown, fallback: string): string {
+    if (err instanceof Error && err.message.trim().length > 0) return err.message;
+    return fallback;
+  }
+
   async function loadBranches() {
     try {
       const data = await fetchBranches();
-        if (Array.isArray(data)) {
-      setBranches(data);
-      if (data.length > 0 && !selectedBranch) {
-        setSelectedBranch(data[0].name);
+      if (Array.isArray(data)) {
+        setBranches(data);
+        if (data.length > 0 && !selectedBranch) {
+          setSelectedBranch(data[0].name);
+        }
       }
-       }
-     } catch (err) {
-       console.error("Failed to load branches:", err);
-      showToast("No se pudo cargar ramas. Asegura que el core esté activo.", "err");
+    } catch (err) {
+      console.error("Failed to load branches:", err);
+      showToast(getErrorMessage(err, "No se pudo cargar ramas. Asegura que el core esté activo."), "err");
       setBranches([]);
     }
+  }
+
+  async function handleRefresh() {
+    await loadBranches();
+    if (!selectedBranch) {
+      showToast("✅ Datos actualizados");
+      return;
+    }
+    await Promise.all([
+      loadDocuments(selectedBranch),
+      loadSimulationHistory(selectedBranch),
+      loadDailyRecs(selectedBranch)
+    ]);
+    showToast("✅ Datos actualizados");
   }
 
   useEffect(() => {
@@ -356,8 +323,8 @@ export default function App() {
       await removeDictionaryPhrase(phrase);
       setDictEntries((prev) => prev.filter((e) => e.phrase !== phrase));
       setStatus(`Frase eliminada: "${phrase}"`);
-    } catch {
-      setStatus("Error eliminando frase");
+    } catch (err) {
+      showToast(getErrorMessage(err, "Error eliminando frase"), "err");
     }
   }
 
@@ -382,8 +349,8 @@ export default function App() {
       setSelectedBranch(created.name);
       setBranchName("");
       showToast("✅ Rama creada");
-    } catch {
-      setBranchNameError("Ya existe una rama con ese nombre.");
+    } catch (err) {
+      setBranchNameError(getErrorMessage(err, "No se pudo crear la rama."));
     }
   }
 
@@ -402,8 +369,8 @@ export default function App() {
       });
       setDocuments([]);
       showToast("✅ Rama eliminada");
-    } catch {
-      showToast("Error al eliminar la rama", "err");
+    } catch (err) {
+      showToast(getErrorMessage(err, "Error al eliminar la rama"), "err");
     }
   }
 
@@ -427,8 +394,9 @@ export default function App() {
       const result = await ingestDocument(selectedBranch, file);
       showToast(`✅ Documento subido. Fragmentos: ${result.chunks}`);
       await loadDocuments(selectedBranch);
-    } catch {
-      setFileError("Error al subir el documento. Comprueba que el formato es compatible.");
+      setFile(null);
+    } catch (err) {
+      setFileError(getErrorMessage(err, "Error al subir el documento. Comprueba que el formato es compatible."));
     }
   }
 
@@ -478,23 +446,14 @@ export default function App() {
       setAnswer(
         "No he entendido o no he podido procesar esa pregunta en este momento.\n\n"
         + "Prueba así:\n"
-        + "- 'Explícame fácil el PDF 1-RESUMEN DIMSENG'\n"
-        + "- 'Resume el documento 1-RESUMEN DIMSENG en 5 puntos'\n"
-        + "- '¿Cuáles son las ideas clave del PDF 1-RESUMEN DIMSENG?'"
+        + "- 'Explícamelo fácil en 5 puntos'\n"
+        + "- 'Resúmelo como si fuera para examen'\n"
+        + "- '¿Cuáles son las ideas clave de este tema?'"
       );
       setContexts([]);
       setSources([]);
       showToast(`Error: ${detail}`, "err");
     }
-  }
-
-  function handleNewChat() {
-    setSessionId(crypto.randomUUID());
-    setAnswer("");
-    setContexts([]);
-    setChunks([]);
-    setSources([]);
-    setStatus("Nuevo chat iniciado");
   }
 
   function handleQuickExplain(mode: "facil" | "examen" | "ejemplos" | "pasos" | "minuto") {
@@ -521,13 +480,6 @@ export default function App() {
     }
     setQuestion(`Explícamelo en 1 minuto: ${question}`);
     setResponseStyle("corta");
-  }
-
-  function handleLoadDimsegQuestion() {
-    const q = DIMSEG_QUESTION_BANK[dimsegIdx % DIMSEG_QUESTION_BANK.length];
-    setQuestion(q);
-    setDimsegIdx((prev) => (prev + 1) % DIMSEG_QUESTION_BANK.length);
-    setStatus("Pregunta de batería DIMSEG cargada");
   }
 
   async function handleGenerateStudyPack() {
@@ -915,8 +867,7 @@ export default function App() {
               </option>
             ))}
           </select>
-          <button onClick={loadBranches}>Refrescar</button>
-          <button onClick={handleNewChat}>Nuevo chat</button>
+          <button onClick={() => void handleRefresh()}>Refrescar</button>
         </div>
       </div>}
 
@@ -1007,10 +958,6 @@ export default function App() {
 
         {isEstudiar && <div className="card">
           <h3>Pregunta (RAG)</h3>
-          <div className="row" style={{ marginBottom: 10 }}>
-            <button onClick={handleLoadDimsegQuestion}>Cargar pregunta DIMSEG</button>
-            <span className="badge">Banco: {DIMSEG_QUESTION_BANK.length} preguntas</span>
-          </div>
           <select
             value={selectedStudyDocumentId}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => {

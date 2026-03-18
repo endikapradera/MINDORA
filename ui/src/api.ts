@@ -22,6 +22,24 @@ import type {
 
 const BASE_URL = "http://127.0.0.1:8000";
 
+async function toApiError(res: Response, fallback: string): Promise<Error> {
+  let detail = fallback;
+  try {
+    const payload = await res.json();
+    if (typeof payload?.detail === "string" && payload.detail.trim().length > 0) {
+      detail = payload.detail;
+    } else if (Array.isArray(payload?.detail) && payload.detail.length > 0) {
+      const first = payload.detail[0];
+      if (typeof first?.msg === "string" && first.msg.trim().length > 0) {
+        detail = first.msg;
+      }
+    }
+  } catch {
+    // ignore json parse failures
+  }
+  return new Error(detail);
+}
+
 export async function checkHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(1500) });
@@ -44,7 +62,7 @@ export async function getSetupStatus(): Promise<{
 
 export async function fetchBranches(): Promise<Branch[]> {
   const res = await fetch(`${BASE_URL}/api/branches`);
-  if (!res.ok) throw new Error("Error cargando ramas");
+  if (!res.ok) throw await toApiError(res, "Error cargando ramas");
   return res.json();
 }
 
@@ -54,7 +72,7 @@ export async function createBranch(name: string): Promise<Branch> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name })
   });
-  if (!res.ok) throw new Error("Error creando rama");
+  if (!res.ok) throw await toApiError(res, "Error creando rama");
   return res.json();
 }
 
@@ -62,7 +80,7 @@ export async function deleteBranch(name: string): Promise<{ status: string }> {
   const res = await fetch(`${BASE_URL}/api/branches?name=${encodeURIComponent(name)}`, {
     method: "DELETE"
   });
-  if (!res.ok) throw new Error("Error eliminando rama");
+  if (!res.ok) throw await toApiError(res, "Error eliminando rama");
   return res.json();
 }
 
@@ -75,7 +93,7 @@ export async function ingestDocument(branch: string, file: File): Promise<{ docu
     method: "POST",
     body: form
   });
-  if (!res.ok) throw new Error("Error en ingesta");
+  if (!res.ok) throw await toApiError(res, "Error en ingesta");
   return res.json();
 }
 
@@ -85,7 +103,7 @@ export async function queryRag(branch: string, question: string, topK: number, d
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, top_k: topK, document_id: documentId ?? null })
   });
-  if (!res.ok) throw new Error("Error en query");
+  if (!res.ok) throw await toApiError(res, "Error en query");
   return res.json();
 }
 
@@ -102,16 +120,7 @@ export async function askRag(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, top_k: topK, response_style: responseStyle, session_id: sessionId ?? null, document_id: documentId ?? null })
   });
-  if (!res.ok) {
-    let detail = "Error en ask";
-    try {
-      const payload = await res.json();
-      if (typeof payload?.detail === "string") detail = payload.detail;
-    } catch {
-      // keep default
-    }
-    throw new Error(detail);
-  }
+  if (!res.ok) throw await toApiError(res, "Error en ask");
   return res.json();
 }
 
@@ -234,7 +243,7 @@ export async function getSimulationHistory(branch: string, limit = 30): Promise<
 
 export async function listDocuments(branch: string): Promise<DocumentListResponse> {
   const res = await fetch(`${BASE_URL}/api/documents?branch=${encodeURIComponent(branch)}`);
-  if (!res.ok) throw new Error("Error listando documentos");
+  if (!res.ok) throw await toApiError(res, "Error listando documentos");
   return res.json();
 }
 
