@@ -10,7 +10,12 @@ def _detect_content_type(text: str) -> str:
         return "teoria"
     if "|" in t or "\t" in t or "tabla" in t:
         return "tabla"
-    if re.search(r"\b(ley|art[íi]culo|art\.|decreto|normativa)\b", t):
+    has_legal_marker = bool(
+        re.search(r"\b(ley|decreto|normativa)\b", t)
+        or re.search(r"\bart[íi]?culo\s+\d+\b", t)
+        or re.search(r"\bart\.\s*\d+\b", t)
+    )
+    if has_legal_marker:
         return "ley_articulo"
     if re.search(r"\b(ejemplo|por ejemplo|caso pr[aá]ctico)\b", t):
         return "ejemplo"
@@ -41,29 +46,59 @@ def _detect_difficulty(text: str) -> str:
 
 
 def _extract_page(text: str) -> Optional[int]:
-    m = re.search(r"\[PAGE\s+(\d+)\]", text)
-    if not m:
+    matches = re.findall(r"\[PAGE\s+(\d+)\]", text)
+    if not matches:
         return None
-    return int(m.group(1))
+    return int(matches[-1])
+
+
+def _is_page_marker(line: str) -> bool:
+    return bool(re.match(r"^\[PAGE\s+\d+\]$", line.strip(), flags=re.I))
 
 
 def _is_heading(line: str) -> bool:
     l = line.strip()
     if not l:
         return False
+    if _is_page_marker(l):
+        return True
     if l.startswith("#"):
         return True
     if re.match(r"^(tema|unidad|cap[ií]tulo|bloque)\s+\d+", l, flags=re.I):
         return True
-    if re.match(r"^\d+(\.\d+)*\s+", l):
+    # 1. Título / 1) Título / 1.1 Título
+    if re.match(r"^\d+([\.)]|\.\d+)+\s+", l):
+        return True
+    if re.match(r"^\d+[\.)]\s+", l):
+        return True
+    # Bullet con aspecto de subtítulo
+    if re.match(r"^[●○■\-]\s+[A-ZÁÉÍÓÚÑ][^\n]{4,90}:?$", l):
+        return True
+    # Línea completamente en mayúsculas (títulos OCR)
+    if re.match(r"^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{8,}$", l):
         return True
     return False
 
 
 def _normalize_heading(line: str) -> str:
     l = re.sub(r"^#+\s*", "", line.strip())
+    l = re.sub(r"^[●○■\-]+\s*", "", l)
+    l = re.sub(r"^\d+[\.)]\s*", "", l)
     l = re.sub(r"\s+", " ", l)
     return l.strip(" -:")
+
+
+def _extract_inline_numbered_heading(text: str) -> Optional[str]:
+    snippet = re.sub(r"\s+", " ", (text or "").strip())
+    if not snippet:
+        return None
+    match = re.search(r"(?:^|\s)(\d+[\.)]\s+[A-ZÁÉÍÓÚÑ][^\.\n]{4,100})", snippet)
+    if not match:
+        return None
+    raw_heading = match.group(1)
+    raw_heading = re.split(r"\s+[●○■]\s+", raw_heading)[0]
+    raw_heading = re.split(r"\s{2,}", raw_heading)[0]
+    return _normalize_heading(raw_heading)
 
 
 def _split_sections(text: str) -> list[str]:
@@ -73,22 +108,63 @@ def _split_sections(text: str) -> list[str]:
     current: list[str] = []
 
     for line in lines:
-        if _is_heading(line):
+        stripped = line.strip()
+
+        if _is_page_marker(stripped):
             if current:
                 blocks.append("\n".join(current).strip())
                 current = []
-            current.append(line.strip())
+            current.append(stripped)
             continue
-        if not line.strip() and current:
+
+        if _is_heading(stripped) and current and len(" ".join(current)) >= 120:
             blocks.append("\n".join(current).strip())
             current = []
+
+        if _is_heading(stripped) and not current:
+            current.append(stripped)
             continue
-        current.append(line)
+
+        if not stripped and current:
+            # Separa párrafos cuando ya hay tamaño suficiente.
+            if len(" ".join(current)) >= 220:
+                blocks.append("\n".join(current).strip())
+                current = []
+            continue
+
+        if stripped:
+            current.append(stripped)
 
     if current:
         blocks.append("\n".join(current).strip())
 
-    return [b for b in blocks if b and len(b) >= 20]
+    return [b for b in blocks if b and len(re.sub(r"\s+", " ", b)) >= 35]
+
+
+def _clean_chunk_text(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    cleaned = re.sub(r"\s*([,;:.])\s*", r"\1 ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def _split_with_page_context(section: str, chunk_size: int = 800, overlap: int = 120) -> list[str]:
+    page_matches = re.findall(r"\[PAGE\s+\d+\]", section)
+    page_marker = page_matches[-1] if page_matches else ""
+    body = re.sub(r"\[PAGE\s+\d+\]", "", section).strip()
+    if not body:
+        return []
+
+    base_chunks = _split_long_text(body, chunk_size=chunk_size, overlap=overlap) or [body]
+    if not page_marker:
+        return [_clean_chunk_text(c) for c in base_chunks if c.strip()]
+
+    out: list[str] = []
+    for c in base_chunks:
+        t = _clean_chunk_text(c)
+        if t:
+            out.append(f"{page_marker} {t}")
+    return out
 
 
 def _split_long_text(text: str, chunk_size: int = 800, overlap: int = 120) -> list[str]:
@@ -122,6 +198,7 @@ def chunk_text_with_metadata(
 
     current_theme = "Tema general"
     current_subtheme = "General"
+    current_page: Optional[int] = None
     output: list[dict] = []
 
     for section in sections:
@@ -129,21 +206,33 @@ def chunk_text_with_metadata(
         if not lines:
             continue
 
-        first_line = lines[0]
+        non_page_lines = [ln for ln in lines if not _is_page_marker(ln)]
+        first_line = non_page_lines[0] if non_page_lines else lines[0]
+        inline_heading = _extract_inline_numbered_heading(section)
         if _is_heading(first_line):
             heading = _normalize_heading(first_line)
             if re.match(r"^(tema|unidad|cap[ií]tulo|bloque)\s+\d+", heading, flags=re.I):
                 current_theme = heading
-                if len(lines) > 1:
-                    current_subtheme = _normalize_heading(lines[1])
+                if len(non_page_lines) > 1:
+                    current_subtheme = _normalize_heading(non_page_lines[1])
+            elif re.match(r"^\d+[\.)]\s+", first_line):
+                # En apuntes suele ser un título de bloque principal: 1. Concepto..., 2. Riesgos...
+                current_theme = heading
+                current_subtheme = heading
             else:
                 current_subtheme = heading
+        elif inline_heading:
+            current_theme = inline_heading
+            current_subtheme = inline_heading
 
         page = _extract_page(section)
+        if page is not None:
+            current_page = page
         section_type = _detect_content_type(section)
         difficulty = _detect_difficulty(section)
 
-        for text_chunk in _split_long_text(section, chunk_size=chunk_size, overlap=overlap) or [section]:
+        chunk_candidates = _split_with_page_context(section, chunk_size=chunk_size, overlap=overlap) or [section]
+        for text_chunk in chunk_candidates:
             output.append(
                 {
                     "text": text_chunk,
@@ -152,7 +241,7 @@ def chunk_text_with_metadata(
                         "tema": current_theme,
                         "subtema": current_subtheme,
                         "tipo_contenido": section_type,
-                        "pagina": page,
+                        "pagina": current_page,
                         "dificultad": difficulty,
                         "fuente": source,
                     },
