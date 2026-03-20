@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   askRag,
@@ -22,9 +22,15 @@ import {
   startExamSimulation,
   submitExamSimulation,
   sendFeedback,
+  listChatSessions,
+  loadChatSession,
+  deleteChatSession,
+  renameChatSession,
+  pinChatSession,
 } from "./api";
 import type {
   Branch,
+  ChatSession,
   DailyRecommendationItem,
   DictionaryEntry,
   DocumentItem,
@@ -71,8 +77,13 @@ export default function App() {
   const [selectedStudyDocumentId, setSelectedStudyDocumentId] = useState<number | "all">("all");
   const [question, setQuestion] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isAsking, setIsAsking] = useState(false);
+  const chatThreadRef = useRef<HTMLDivElement>(null);
   const [lastQuestion, setLastQuestion] = useState("");
   const [sessionId, setSessionId] = useState<string>(crypto.randomUUID());
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [showSessionsPanel, setShowSessionsPanel] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState("");
   const [answer, setAnswer] = useState("");
   const [learnPhraseText, setLearnPhraseText] = useState("");
   const [sources, setSources] = useState<string[]>([]);
@@ -233,6 +244,12 @@ export default function App() {
     localStorage.setItem("mindora.theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
+  useEffect(() => {
+    if (chatThreadRef.current) {
+      chatThreadRef.current.scrollTop = chatThreadRef.current.scrollHeight;
+    }
+  }, [chatMessages, isAsking]);
+
   function showToast(msg: string, type: "ok" | "err" = "ok") {
     setToast({ msg, type });
     setStatus(msg);
@@ -279,6 +296,7 @@ export default function App() {
       loadDocuments(selectedBranch);
       loadSimulationHistory(selectedBranch);
       loadDailyRecs(selectedBranch);
+      void loadChatSessions();
     }
   }, [selectedBranch]);
 
@@ -412,7 +430,7 @@ export default function App() {
 
   async function handleAsk() {
     setQuestionError("");
-    if (!canUseBranch) { setQuestionError("Selecciona una rama primero."); return; }
+    if (!canUseBranch) { setQuestionError("Selecciona una rama en la barra superior primero."); return; }
     if (!question.trim()) { setQuestionError("Escribe una pregunta para continuar."); return; }
     if (question.trim().length < 3) { setQuestionError("La pregunta debe tener al menos 3 caracteres."); return; }
     try {
@@ -422,6 +440,8 @@ export default function App() {
         createdAt: new Date().toISOString(),
       };
       setChatMessages((prev) => [...prev, userMessage]);
+      setIsAsking(true);
+      setQuestion("");
 
       const result = await askRag(
         selectedBranch,
@@ -444,7 +464,6 @@ export default function App() {
         setSessionId(result.session_id);
       }
       setStatus("Respuesta generada");
-      setQuestion("");
     } catch (err) {
       const detail = err instanceof Error ? err.message : "No se pudo procesar la pregunta";
       const fallbackMessage =
@@ -460,6 +479,8 @@ export default function App() {
       ]);
       setSources([]);
       showToast(`Error: ${detail}`, "err");
+    } finally {
+      setIsAsking(false);
     }
   }
 
@@ -470,7 +491,77 @@ export default function App() {
     }
   }
 
-  function handleSaveConversation() {
+  async function loadChatSessions(searchQuery?: string) {
+    if (!selectedBranch) return;
+    try {
+      const sessions = await listChatSessions(selectedBranch, searchQuery ?? sessionSearch);
+      setChatSessions(sessions);
+    } catch {
+      setChatSessions([]);
+    }
+  }
+
+  function handleNewChat() {
+    setChatMessages([]);
+    setAnswer("");
+    setSources([]);
+    setSessionId(crypto.randomUUID());
+    void loadChatSessions();
+  }
+
+  async function handleOpenSession(sId: string) {
+    if (!selectedBranch) return;
+    try {
+      const data = await loadChatSession(selectedBranch, sId);
+      const loaded: ChatMessage[] = data.messages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        createdAt: new Date().toISOString(),
+      }));
+      setChatMessages(loaded);
+      setSessionId(sId);
+      setShowSessionsPanel(false);
+    } catch {
+      showToast("No se pudo cargar la sesión", "err");
+    }
+  }
+
+  async function handleDeleteSession(sId: string) {
+    if (!selectedBranch) return;
+    try {
+      await deleteChatSession(selectedBranch, sId);
+      setChatSessions((prev) => prev.filter((s) => s.session_id !== sId));
+      if (sId === sessionId) handleNewChat();
+      showToast("Sesión eliminada");
+    } catch {
+      showToast("No se pudo eliminar la sesión", "err");
+    }
+  }
+
+  async function handleRenameSession(sId: string, currentTitle: string) {
+    if (!selectedBranch) return;
+    const nextTitle = window.prompt("Nuevo título de la sesión", currentTitle)?.trim();
+    if (!nextTitle) return;
+    try {
+      await renameChatSession(selectedBranch, sId, nextTitle);
+      await loadChatSessions();
+      showToast("Sesión renombrada");
+    } catch {
+      showToast("No se pudo renombrar la sesión", "err");
+    }
+  }
+
+  async function handleTogglePinSession(sId: string, pinned: boolean) {
+    if (!selectedBranch) return;
+    try {
+      await pinChatSession(selectedBranch, sId, !pinned);
+      await loadChatSessions();
+    } catch {
+      showToast("No se pudo fijar la sesión", "err");
+    }
+  }
+
+  async function handleSaveConversation() {
     if (chatMessages.length === 0) {
       showToast("No hay conversación para guardar", "err");
       return;
@@ -481,16 +572,38 @@ export default function App() {
       return `[${timestamp}] ${who}:\n${m.content}`;
     });
     const payload = lines.join("\n\n-----------------------\n\n");
-    const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `mindora-chat-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast("✅ Conversación guardada en .txt");
+    const suggestedName = `mindora-chat-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+
+    try {
+      // Tauri desktop: open native save dialog
+      const { save } = await import("@tauri-apps/api/dialog");
+      const { writeTextFile } = await import("@tauri-apps/api/fs");
+
+      const selectedPath = await save({
+        defaultPath: suggestedName,
+        filters: [{ name: "Texto", extensions: ["txt"] }],
+      });
+      if (!selectedPath) {
+        showToast("Guardado cancelado", "err");
+        return;
+      }
+
+      await writeTextFile(selectedPath, payload);
+      showToast("✅ Conversación guardada");
+      return;
+    } catch {
+      // Browser/dev fallback
+      const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = suggestedName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("✅ Conversación guardada en .txt");
+    }
   }
 
   async function handleGenerateStudyPack() {
@@ -895,17 +1008,6 @@ export default function App() {
             <option value="config">Configuración</option>
           </select>
 
-          <select
-            value={retrievalDepth}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setRetrievalDepth(Number(e.target.value))}
-            title="Profundidad de recuperación"
-          >
-            <option value={4}>Búsqueda rápida (4)</option>
-            <option value={6}>Búsqueda equilibrada (6)</option>
-            <option value={8}>Búsqueda profunda (8)</option>
-            <option value={10}>Búsqueda máxima (10)</option>
-          </select>
-
           <button onClick={() => void handleRefresh()}>Refrescar</button>
         </div>
       </div>}
@@ -948,6 +1050,206 @@ export default function App() {
               <button onClick={() => setActiveSection("examenes")}>Generar examen</button>
               <button onClick={() => setActiveSection("temarios")}>Gestionar temarios</button>
               <button onClick={() => setActiveSection("progreso")}>Ver progreso</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEstudiar && (
+        <div className="study-section-wrapper">
+          <div className="card study-chat-card">
+            <div className="study-chat-header-row">
+              <h3 style={{ margin: 0 }}>Chat de estudio</h3>
+              <div className="study-chat-header-controls">
+                <select
+                  value={selectedStudyDocumentId}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                    const v = e.target.value;
+                    setSelectedStudyDocumentId(v === "all" ? "all" : Number(v));
+                  }}
+                  title="Filtrar por documento"
+                >
+                  <option value="all">📚 Todo el temario</option>
+                  {documents.map((doc) => (
+                    <option key={doc.id} value={doc.id}>{doc.filename}</option>
+                  ))}
+                </select>
+                <select
+                  value={retrievalDepth}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setRetrievalDepth(Number(e.target.value))}
+                  title="Profundidad de búsqueda"
+                >
+                  <option value={4}>🔍 Búsqueda rápida</option>
+                  <option value={6}>🔍 Búsqueda equilibrada</option>
+                  <option value={8}>🔍 Búsqueda profunda</option>
+                  <option value={10}>🔍 Búsqueda máxima</option>
+                </select>
+              </div>
+            </div>
+
+            {!canUseBranch && (
+              <div className="study-no-branch">
+                ⚠️ Selecciona una rama en la barra superior para empezar a estudiar.
+              </div>
+            )}
+
+            <div className="study-chat-layout">
+              <aside className="study-history-panel">
+                <div className="history-panel-header">
+                  <h4>Conversaciones</h4>
+                  <button
+                    className="new-chat-btn"
+                    title="Nueva conversación"
+                    onClick={handleNewChat}
+                  >
+                    ✏️ Nueva
+                  </button>
+                </div>
+
+                {/* Past sessions toggle */}
+                <button
+                  className="sessions-toggle-btn"
+                  onClick={() => {
+                    setShowSessionsPanel((v) => !v);
+                    void loadChatSessions();
+                  }}
+                >
+                  🕐 {showSessionsPanel ? "Ocultar historial" : "Ver historial"}
+                </button>
+
+                {showSessionsPanel && (
+                  <>
+                    <input
+                      className="session-search-input"
+                      placeholder="Buscar sesión..."
+                      value={sessionSearch}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                        const value = e.target.value;
+                        setSessionSearch(value);
+                        void loadChatSessions(value);
+                      }}
+                    />
+                    <ul className="sessions-list">
+                    {chatSessions.length === 0 ? (
+                      <li className="history-empty">No hay sesiones guardadas.</li>
+                    ) : (
+                      chatSessions.map((s) => (
+                        <li
+                          key={s.session_id}
+                          className={`session-item${s.session_id === sessionId ? " session-active" : ""}`}
+                        >
+                          <button
+                            className="session-load-btn"
+                            onClick={() => void handleOpenSession(s.session_id)}
+                            title={s.title}
+                          >
+                            <span className="session-title">{s.title}</span>
+                            <span className="session-meta">
+                              {s.pinned ? "📌 " : ""}
+                              {s.message_count / 2 | 0} turnos ·{" "}
+                              {new Date(s.updated_at).toLocaleDateString("es-ES", {
+                                day: "2-digit",
+                                month: "short",
+                              })}
+                            </span>
+                          </button>
+                          <button
+                            className="session-pin-btn"
+                            title={s.pinned ? "Desfijar" : "Fijar"}
+                            onClick={() => void handleTogglePinSession(s.session_id, s.pinned)}
+                          >
+                            {s.pinned ? "📍" : "📌"}
+                          </button>
+                          <button
+                            className="session-rename-btn"
+                            title="Renombrar sesión"
+                            onClick={() => void handleRenameSession(s.session_id, s.title)}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            className="session-delete-btn"
+                            title="Eliminar sesión"
+                            onClick={() => void handleDeleteSession(s.session_id)}
+                          >
+                            🗑
+                          </button>
+                        </li>
+                      ))
+                    )}
+                    </ul>
+                  </>
+                )}
+
+                {/* Current session questions (quick scroll) */}
+                {!showSessionsPanel && (
+                  <>
+                    {chatMessages.filter((m) => m.role === "user").length === 0 ? (
+                      <p className="history-empty">Aún no hay preguntas en esta sesión.</p>
+                    ) : (
+                      <ul>
+                        {chatMessages
+                          .filter((m) => m.role === "user")
+                          .slice(-8)
+                          .reverse()
+                          .map((m, idx) => (
+                            <li key={`${m.createdAt}-${idx}`}>{m.content}</li>
+                          ))}
+                      </ul>
+                    )}
+                    <button
+                      onClick={handleSaveConversation}
+                      disabled={chatMessages.length === 0}
+                      style={{ marginTop: "auto" }}
+                    >
+                      💾 Guardar chat
+                    </button>
+                  </>
+                )}
+              </aside>
+
+              <div className="study-chat-main">
+                <div ref={chatThreadRef} className="chat-thread study-chat-thread">
+                  {chatMessages.length === 0 && (
+                    <div className="chat-bubble assistant">
+                      <div className="chat-role">MINDORA</div>
+                      Hola, soy tu tutor IA. Pregúntame cualquier duda del temario y te ayudaré paso a paso.
+                    </div>
+                  )}
+                  {chatMessages.map((m, idx) => (
+                    <div key={`${m.createdAt}-${idx}`} className={`chat-bubble ${m.role === "user" ? "user" : "assistant"}`}>
+                      <div className="chat-role">{m.role === "user" ? "Tú" : "MINDORA"}</div>
+                      <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+                    </div>
+                  ))}
+                  {isAsking && (
+                    <div className="chat-bubble assistant thinking-bubble">
+                      <div className="chat-role">MINDORA</div>
+                      <span className="thinking-dots">Pensando<span>.</span><span>.</span><span>.</span></span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="chat-composer">
+                  <input
+                    placeholder={canUseBranch ? "Escribe una pregunta y pulsa Enter o ➤…" : "Selecciona una rama primero…"}
+                    value={question}
+                    className={questionError ? "input-error" : ""}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => { setQuestion(e.target.value); setQuestionError(""); }}
+                    onKeyDown={handleChatInputKeyDown}
+                    disabled={isAsking}
+                  />
+                  <button
+                    onClick={() => void handleAsk()}
+                    disabled={isAsking}
+                    className="send-btn"
+                    title="Enviar"
+                  >
+                    {isAsking ? "⏳" : "➤"}
+                  </button>
+                </div>
+                {questionError && <span className="field-error" style={{ marginTop: 4 }}>{questionError}</span>}
+              </div>
             </div>
           </div>
         </div>
@@ -1006,72 +1308,7 @@ export default function App() {
           )}
         </div>}
 
-        {isEstudiar && <div className="card study-chat-card">
-          <h3>Chat de estudio</h3>
-          <div className="study-chat-layout">
-            <aside className="study-history-panel">
-              <h4>Historial</h4>
-              {chatMessages.filter((m) => m.role === "user").length === 0 ? (
-                <p className="history-empty">Aún no hay preguntas.</p>
-              ) : (
-                <ul>
-                  {chatMessages
-                    .filter((m) => m.role === "user")
-                    .slice(-8)
-                    .reverse()
-                    .map((m, idx) => (
-                      <li key={`${m.createdAt}-${idx}`}>{m.content}</li>
-                    ))}
-                </ul>
-              )}
-              <button onClick={handleSaveConversation} disabled={chatMessages.length === 0}>Guardar historial</button>
-            </aside>
 
-            <div className="study-chat-main">
-              <select
-                value={selectedStudyDocumentId}
-                onChange={(e: ChangeEvent<HTMLSelectElement>) => {
-                  const v = e.target.value;
-                  setSelectedStudyDocumentId(v === "all" ? "all" : Number(v));
-                }}
-              >
-                <option value="all">Todo el temario</option>
-                {documents.map((doc) => (
-                  <option key={doc.id} value={doc.id}>{doc.filename}</option>
-                ))}
-              </select>
-
-              <div className="chat-thread study-chat-thread">
-                {chatMessages.length === 0 && (
-                  <div className="chat-bubble assistant">
-                    <div className="chat-role">MINDORA</div>
-                    Hola, soy tu tutor IA. Pregúntame cualquier duda del temario y te ayudaré paso a paso.
-                  </div>
-                )}
-                {chatMessages.map((m, idx) => (
-                  <div key={`${m.createdAt}-${idx}`} className={`chat-bubble ${m.role === "user" ? "user" : "assistant"}`}>
-                    <div className="chat-role">{m.role === "user" ? "Tú" : "MINDORA"}</div>
-                    <div>{m.content}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="chat-composer">
-                <input
-                  placeholder="Escribe un mensaje..."
-                  value={question}
-                  className={questionError ? "input-error" : ""}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => { setQuestion(e.target.value); setQuestionError(""); }}
-                  onKeyDown={handleChatInputKeyDown}
-                />
-                <button onClick={handleAsk} disabled={!canUseBranch} className="send-btn" title="Enviar">
-                  ➤
-                </button>
-              </div>
-              {questionError && <span className="field-error" style={{ marginTop: 4 }}>{questionError}</span>}
-            </div>
-          </div>
-        </div>}
 
         {isExamenes && <div className="card">
           <h3>Generar examen</h3>
@@ -1431,16 +1668,7 @@ export default function App() {
         </div>
       )}
 
-      {isEstudiar && contexts.length > 0 && (
-        <div className="card">
-          <h3>Contexto usado</h3>
-          {contexts.map((c, idx) => (
-            <div key={idx} className="result">
-              {c}
-            </div>
-          ))}
-        </div>
-      )}
+
       </div>
     </div>
   );

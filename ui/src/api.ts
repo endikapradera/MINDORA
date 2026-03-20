@@ -1,6 +1,7 @@
 import type {
   AskResponse,
   Branch,
+  ChatSession,
   DictionaryEntry,
   DictionaryResponse,
   DailyRecommendationsResponse,
@@ -316,5 +317,71 @@ export async function removeDictionaryPhrase(phrase: string): Promise<{ status: 
     { method: "DELETE" }
   );
   if (!res.ok) throw new Error("Error eliminando frase");
+  return res.json();
+}
+
+// ── Chat session history ──────────────────────────────────────────────────────
+
+export async function listChatSessions(branch: string, query?: string): Promise<ChatSession[]> {
+  const q = query && query.trim().length > 0 ? `?q=${encodeURIComponent(query.trim())}` : "";
+  const res = await fetch(`${BASE_URL}/api/chats/${encodeURIComponent(branch)}${q}`);
+  if (!res.ok) throw await toApiError(res, "Error cargando historial de sesiones");
+  return res.json();
+}
+
+export async function loadChatSession(
+  branch: string,
+  sessionId: string
+): Promise<{ session_id: string; messages: { role: string; content: string }[] }> {
+  const res = await fetch(
+    `${BASE_URL}/api/chats/${encodeURIComponent(branch)}/${encodeURIComponent(sessionId)}`
+  );
+  if (!res.ok) throw await toApiError(res, "Error cargando sesión");
+  return res.json();
+}
+
+export async function deleteChatSession(
+  branch: string,
+  sessionId: string
+): Promise<{ status: string }> {
+  const res = await fetch(
+    `${BASE_URL}/api/chats/${encodeURIComponent(branch)}/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw await toApiError(res, "Error eliminando sesión");
+  return res.json();
+}
+
+export async function renameChatSession(
+  branch: string,
+  sessionId: string,
+  title: string
+): Promise<{ status: string; title: string }> {
+  const res = await fetch(
+    `${BASE_URL}/api/chats/${encodeURIComponent(branch)}/${encodeURIComponent(sessionId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }
+  );
+  if (!res.ok) throw await toApiError(res, "Error renombrando sesión");
+  return res.json();
+}
+
+export async function pinChatSession(
+  branch: string,
+  sessionId: string,
+  pinned: boolean
+): Promise<{ status: string; pinned: boolean }> {
+  const res = await fetch(
+    `${BASE_URL}/api/chats/${encodeURIComponent(branch)}/${encodeURIComponent(sessionId)}/pin`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pinned }),
+    }
+  );
+  if (!res.ok) throw await toApiError(res, "Error fijando sesión");
   return res.json();
 }

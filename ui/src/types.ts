@@ -3,6 +3,15 @@ export type Branch = {
   path: string;
 };
 
+export type ChatSession = {
+  session_id: string;
+  title: string;
+  message_count: number;
+  pinned: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ChunkResult = {
   chunk_id: number;
   document_id: number;

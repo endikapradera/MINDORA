@@ -16,25 +16,50 @@ def _resource_path(relative: str) -> Path:
     return Path(__file__).parent / relative
 
 
+def _user_data_dir() -> Path:
+    """Return OS-appropriate user data dir for MINDORA."""
+    home = Path.home()
+    if sys.platform == "win32":
+        appdata = os.getenv("APPDATA")
+        if appdata:
+            return Path(appdata) / "MINDORA"
+        return home / "Documents" / "MINDORA"
+    elif sys.platform == "darwin":
+        return home / "Documents" / "MINDORA"
+    else:
+        # Linux: follow XDG Base Directory spec
+        xdg = os.getenv("XDG_DATA_HOME")
+        if xdg:
+            return Path(xdg) / "MINDORA"
+        return home / ".local" / "share" / "MINDORA"
+
+
 def _find_llm_model() -> Optional[str]:
     """
     Search for a .gguf model file in standard locations.
     Priority:
-      1. IA_OFFLINE_LLM_PATH env var (already set → use it)
-      2. ~/Documents/MINDORA/models/
-      3. ~/Desktop/MINDORA/models/ (legacy)
-      4. Same directory as the executable
+      1. IA_OFFLINE_LLM_PATH env var (already set -> use it)
+      2. ~/Documents/MINDORA/models/         (macOS/Windows)
+      3. ~/.local/share/MINDORA/models/      (Linux XDG)
+      4. ~/Desktop/MINDORA/models/ (legacy)
+      5. Same directory as the executable
     """
     if os.getenv("IA_OFFLINE_LLM_PATH"):
         return os.environ["IA_OFFLINE_LLM_PATH"]
 
     home = Path.home()
-    search_dirs = [
+    search_dirs: list = [
         home / "Documents" / "MINDORA" / "models",
+        home / ".local" / "share" / "MINDORA" / "models",
         home / "Desktop" / "MINDORA" / "models",
         home / "Desktop" / "MINDORA" / "MINDORA" / "models",
         Path(sys.executable).parent,
     ]
+    # Also add APPDATA-based path on Windows
+    appdata = os.getenv("APPDATA")
+    if appdata:
+        search_dirs.insert(0, Path(appdata) / "MINDORA" / "models")
+
     for d in search_dirs:
         hits = sorted(glob.glob(str(d / "*.gguf")))
         if hits:
@@ -43,26 +68,37 @@ def _find_llm_model() -> Optional[str]:
 
 
 def main() -> None:
-    # ── Thread / compatibility env vars ──────────────────────────────────
+    # -- Thread / compatibility env vars --
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
     os.environ.setdefault("MKL_SERVICE_FORCE_INTEL", "1")
 
-    # ── Bundled embedding model (PyInstaller only) ────────────────────────
+    # -- Set user data dir so config.py uses correct path when frozen --
+    if getattr(sys, "frozen", False) and not os.getenv("IA_OFFLINE_BASE_DIR"):
+        data_dir = _user_data_dir() / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["IA_OFFLINE_BASE_DIR"] = str(data_dir)
+        print(f"[MINDORA] Data dir: {data_dir}", flush=True)
+
+    # -- Bundled embedding model (PyInstaller only) --
     if getattr(sys, "frozen", False):
         bundled_emb = _resource_path("embedding_model")
         if bundled_emb.exists():
             os.environ["IA_OFFLINE_EMBEDDINGS_MODEL"] = str(bundled_emb)
 
-    # ── Auto-discover LLM model ───────────────────────────────────────────
+    # -- Auto-discover LLM model --
     model_path = _find_llm_model()
     if model_path:
         os.environ["IA_OFFLINE_LLM_PATH"] = model_path
         print(f"[MINDORA] LLM model: {model_path}", flush=True)
     else:
-        print("[MINDORA] WARNING: No .gguf model found. "
-              "Place your model in ~/Documents/MINDORA/models/", flush=True)
-        # Still start the server — endpoints will return a clear error
+        expected_dir = _user_data_dir() / "models"
+        print(
+            f"[MINDORA] WARNING: No .gguf model found. "
+            f"Place your model in {expected_dir}",
+            flush=True,
+        )
+        # Still start the server - endpoints will return a clear error
         os.environ.setdefault("IA_OFFLINE_LLM_PATH", "__not_found__")
 
     host = os.getenv("IA_OFFLINE_HOST", "127.0.0.1")

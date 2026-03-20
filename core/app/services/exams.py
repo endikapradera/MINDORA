@@ -42,6 +42,57 @@ def _compact_context_texts(context_texts: list[str], max_chars: int = 4200) -> s
     return "\n\n".join(parts)
 
 
+def _topic_query_variants(topic: str) -> list[str]:
+    base = re.sub(r"\s+", " ", (topic or "").strip())
+    if not base:
+        return []
+
+    normalized = base.lower()
+    variants = [
+        base,
+        f"definiciones y conceptos clave de {base}",
+        f"resumen del tema {base}",
+        f"explicación detallada del tema {base}",
+    ]
+
+    stripped = re.sub(r"(?i)\b(tema|unidad|cap[ií]tulo|bloque)\s*[:\-]?\s*", "", base).strip()
+    if stripped and stripped.lower() != normalized:
+        variants.extend(
+            [
+                stripped,
+                f"conceptos principales {stripped}",
+            ]
+        )
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for q in variants:
+        key = q.strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            deduped.append(q.strip())
+    return deduped
+
+
+def _retrieve_exam_contexts(branch: str, topic: str, top_k: int) -> list[dict]:
+    queries = _topic_query_variants(topic) or [topic]
+    merged: list[dict] = []
+    seen_chunk_ids: set[int] = set()
+
+    for i, q in enumerate(queries):
+        dynamic_k = max(top_k, top_k + (2 if i < 2 else 4))
+        results = retrieve_chunks(branch, q, dynamic_k)
+        for r in results:
+            chunk_id = int(r.get("chunk_id", -1))
+            if chunk_id in seen_chunk_ids:
+                continue
+            seen_chunk_ids.add(chunk_id)
+            merged.append(r)
+
+    merged.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+    return merged[: max(top_k * 2, 12)]
+
+
 def _build_type_instructions(exam_type: Literal["test_simple", "test_multiple", "desarrollo", "mixto"]) -> str:
     if exam_type == "test_simple":
         return "Todas las preguntas deben ser tipo test de respuesta única con 4 opciones (A-D)."
@@ -246,7 +297,7 @@ def generate_exam(
     if not branch_exists(branch):
         raise FileNotFoundError()
 
-    contexts = retrieve_chunks(branch, topic, top_k)
+    contexts = _retrieve_exam_contexts(branch, topic, top_k)
     context_texts = [c["text"] for c in contexts]
     if not context_texts:
         raise RuntimeError("No hay suficiente contexto del temario para generar el examen.")
@@ -257,7 +308,7 @@ def generate_exam(
         f"Número de preguntas: {num_questions}. "
         f"{_build_type_instructions(exam_type)}"
     )
-    context_block = _compact_context_texts(context_texts, max_chars=2200)
+    context_block = _compact_context_texts(context_texts, max_chars=3200)
     full_prompt = (
         "Eres un profesor universitario experto. Crea preguntas válidas y no repetidas basadas solo en el contexto.\n"
         "Devuelve el resultado en este formato ESTRICTO por cada pregunta:\n"

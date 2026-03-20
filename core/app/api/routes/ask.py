@@ -14,6 +14,10 @@ from sqlmodel import select
 router = APIRouter()
 
 
+_LOW_EVIDENCE_AVG_SCORE = 0.22
+_LOW_EVIDENCE_TOP_SCORE = 0.30
+
+
 def _question_is_unclear(question: str) -> bool:
     q = (question or "").strip()
     if len(q) < 4:
@@ -241,6 +245,22 @@ def ask(payload: AskRequest, branch: str):
             sources=[],
             session_id=session_id,
         )
+
+    # Safety guard: if retrieval evidence is weak, do not hallucinate.
+    if results:
+        top_score = float(results[0].get("score", 0.0))
+        avg_score = sum(float(r.get("score", 0.0)) for r in results) / max(1, len(results))
+        if top_score < _LOW_EVIDENCE_TOP_SCORE and avg_score < _LOW_EVIDENCE_AVG_SCORE:
+            return AskResponse(
+                answer=(
+                    "No lo sé con suficiente certeza usando la evidencia disponible en esta rama.\n\n"
+                    "Prueba con una pregunta más concreta o añade material adicional sobre ese tema."
+                ),
+                contexts=contexts,
+                sources=sources,
+                session_id=session_id,
+            )
+
     try:
         history = get_chat_history(branch, session_id)
         answer = generate_answer(payload.question, contexts, payload.response_style, history=history)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections import OrderedDict
+from time import monotonic
 from typing import Optional
 
 from sqlmodel import select
@@ -11,6 +13,11 @@ from app.services.embeddings import embed_texts
 from app.services.index import search
 from app.storage.database import get_session
 from app.storage.models import Chunk, Document
+
+
+_CACHE_MAX_ITEMS = 128
+_CACHE_TTL_SECONDS = 30.0
+_query_cache: "OrderedDict[tuple, tuple[float, list[dict]]]" = OrderedDict()
 
 
 def _normalize_for_dedup(text: str) -> str:
@@ -37,6 +44,11 @@ def _ordered_tokens(text: str) -> list[str]:
 
 def _parse_metadata(raw: str) -> dict:
     if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception:
         return {}
 
 
@@ -66,6 +78,8 @@ def _phrase_overlap_score(question: str, text: str) -> float:
 
 
 def _intent_metadata_bonus(intent: dict, metadata: dict) -> float:
+    if not isinstance(metadata, dict):
+        return 0.0
     content_type = str(metadata.get("tipo_contenido", "")).lower()
     bonus = 0.0
     if intent["wants_definition"] and content_type == "definicion":
@@ -77,11 +91,6 @@ def _intent_metadata_bonus(intent: dict, metadata: dict) -> float:
     if intent["wants_table"] and content_type == "tabla":
         bonus += 0.08
     return bonus
-    try:
-        data = json.loads(raw)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
 
 
 def _score_with_metadata(question: str, text: str, base_score: float, metadata: dict) -> float:
@@ -155,9 +164,26 @@ def _rerank_scored_candidates(candidates: list[dict], top_k: int) -> list[dict]:
     return selected
 
 
+def _effective_score_threshold(question: str) -> float:
+    q_tokens = _tokens(question)
+    if len(q_tokens) <= 2:
+        return 0.04
+    if len(q_tokens) <= 4:
+        return 0.06
+    return 0.08
+
+
 def retrieve_chunks(branch: str, question: str, top_k: int = 5, document_id: Optional[int] = None) -> list[dict]:
+    cache_key = (branch, question.strip().lower(), int(top_k), int(document_id or 0))
+    now = monotonic()
+    cached = _query_cache.get(cache_key)
+    if cached and (now - cached[0]) <= _CACHE_TTL_SECONDS:
+        _query_cache.move_to_end(cache_key)
+        return [dict(x) for x in cached[1]]
+
     vector = embed_texts([question])
     candidate_k = max(20, top_k * 4)
+    min_score = _effective_score_threshold(question)
     ids, scores = search(branch, vector, top_k=candidate_k)
     if ids.size == 0:
         return []
@@ -179,7 +205,7 @@ def retrieve_chunks(branch: str, question: str, top_k: int = 5, document_id: Opt
     for idx, score in zip(ids.tolist(), scores.tolist()):
         if idx == -1:
             continue
-        if float(score) < 0.08:
+        if float(score) < min_score:
             continue
         chunk = chunk_map.get(int(idx))
         if not chunk:
@@ -214,4 +240,11 @@ def retrieve_chunks(branch: str, question: str, top_k: int = 5, document_id: Opt
             }
         )
     reranked = _rerank_scored_candidates(results, top_k=top_k)
-    return sorted(reranked, key=lambda x: x["score"], reverse=True)
+    final = sorted(reranked, key=lambda x: x["score"], reverse=True)
+
+    _query_cache[cache_key] = (now, [dict(x) for x in final])
+    _query_cache.move_to_end(cache_key)
+    while len(_query_cache) > _CACHE_MAX_ITEMS:
+        _query_cache.popitem(last=False)
+
+    return final

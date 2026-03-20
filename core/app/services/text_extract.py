@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import logging
+import re
+from collections import Counter
 from pathlib import Path
 
 from docx import Document as DocxDocument
@@ -16,6 +18,8 @@ logger = logging.getLogger(__name__)
 _OCR_THRESHOLD = 60
 # Minimum image size (px) to attempt OCR / description
 _MIN_IMG_PX = 80
+# A line present in more than this fraction of pages is considered a header/footer
+_HEADER_FOOTER_THRESHOLD = 0.40
 
 
 def extract_text_from_file(path: Path) -> str:
@@ -31,6 +35,60 @@ def extract_text_from_file(path: Path) -> str:
     if suffix in {".txt", ".md"}:
         return path.read_text(encoding="utf-8", errors="ignore")
     raise ValueError("Unsupported file type")
+
+
+# ---------------------------------------------------------------------------
+# Header / footer deduplication
+# ---------------------------------------------------------------------------
+
+def _remove_repeated_lines(per_page_texts: list[str], threshold: float = _HEADER_FOOTER_THRESHOLD) -> list[str]:
+    """
+    Detect and strip lines that appear verbatim in more than `threshold` fraction
+    of pages — these are almost certainly running headers, footers, or watermarks.
+
+    Strategy:
+      • Examine only the first 3 and last 3 lines of each page (where headers/footers live).
+      • Count unique occurrences across pages (one count per page regardless of repeats within).
+      • Remove any such line from ALL positions within each page's text.
+    """
+    n = len(per_page_texts)
+    if n < 3:
+        # Too few pages — not enough signal, skip dedup
+        return per_page_texts
+
+    # Collect candidate lines (first/last 3 of each page)
+    candidate_counts: Counter[str] = Counter()
+    for text in per_page_texts:
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        seen_this_page: set[str] = set()
+        candidates = lines[:3] + lines[-3:]
+        for ln in candidates:
+            if len(ln) >= 4 and ln not in seen_this_page:
+                candidate_counts[ln] += 1
+                seen_this_page.add(ln)
+
+    # Anything exceeding the threshold is a header/footer
+    repeated: set[str] = {
+        ln for ln, count in candidate_counts.items()
+        if count / n >= threshold
+    }
+
+    if not repeated:
+        return per_page_texts
+
+    logger.info(
+        "Header/footer dedup: removing %d repeated line(s): %s",
+        len(repeated),
+        list(repeated)[:5],
+    )
+
+    cleaned: list[str] = []
+    for text in per_page_texts:
+        lines = text.splitlines()
+        filtered = [ln for ln in lines if ln.strip() not in repeated]
+        cleaned.append("\n".join(filtered))
+
+    return cleaned
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +193,26 @@ def _extract_pdf(path: Path) -> str:
     if _fitz_available and fitz_doc is not None:
         fitz_doc.close()
 
-    return "\n".join(parts)
+    # Separate page markers from page bodies, dedup headers/footers, then rejoin
+    # parts is a flat list of "[PAGE n]\n<text>" strings plus "[IMAGEN ...]" items
+    page_blocks: list[str] = []
+    image_stubs: list[tuple[int, str]] = []  # (original index, text)
+
+    for idx, item in enumerate(parts):
+        if item.startswith("[PAGE "):
+            page_blocks.append(item)
+        else:
+            image_stubs.append((idx, item))
+
+    # Strip headers/footers only from page body text (not from image descriptions)
+    cleaned_pages = _remove_repeated_lines(page_blocks)
+
+    # Rebuild parts in original order
+    result_parts: list[str] = list(cleaned_pages)
+    for orig_idx, stub in image_stubs:
+        result_parts.append(stub)
+
+    return "\n".join(result_parts)
 
 
 def _extract_docx(path: Path) -> str:

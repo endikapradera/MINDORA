@@ -15,9 +15,23 @@ fn spawn_backend(resource_dir: &std::path::Path) -> Option<Child> {
   // Depending on how Tauri normalizes `../` in `bundle.resources`,
   // resources can land under `_up_/_up_/...`.
   let candidates = [
-    resource_dir.join("IA_Core").join(exe_name),
-    resource_dir.join("core").join("dist").join("IA_Core").join(exe_name),
+    // Tauri normalises "../.." → "_up_/_up_" inside the resources dir
     resource_dir
+      .join("_up_")
+      .join("_up_")
+      .join("core")
+      .join("dist")
+      .join("IA_Core")
+      .join(exe_name),
+    // Flat copy (in case Tauri/future version strips the prefix)
+    resource_dir.join("IA_Core").join(exe_name),
+    // Preserved sub-path without the up-segments
+    resource_dir.join("core").join("dist").join("IA_Core").join(exe_name),
+    // Linux AppImage: resources may land one level higher relative to the binary
+    resource_dir
+      .join("_up_")
+      .join("lib")
+      .join("MINDORA")
       .join("_up_")
       .join("_up_")
       .join("core")
@@ -47,6 +61,12 @@ fn spawn_backend(resource_dir: &std::path::Path) -> Option<Child> {
   cmd.env("KMP_DUPLICATE_LIB_OK", "TRUE");
   cmd.env("MKL_SERVICE_FORCE_INTEL", "1");
   cmd.env("IA_OFFLINE_PORT", "8000");
+  // Disable network access for the backend process (belt-and-suspenders)
+  cmd.env("NO_PROXY", "*");
+  cmd.env("REQUESTS_CA_BUNDLE", ""); // block outbound HTTPS in requests lib
+  // Linux: disable broken DMA-BUF renderer to avoid GPU crashes
+  #[cfg(target_os = "linux")]
+  cmd.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
   cmd.stdout(std::process::Stdio::null());
   cmd.stderr(std::process::Stdio::null());
 

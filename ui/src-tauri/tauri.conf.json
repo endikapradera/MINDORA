@@ -14,7 +14,7 @@
       "all": false,
       "shell": {
         "all": false,
-        "execute": true,
+        "execute": false,
         "open": true,
         "sidecar": false
       },
@@ -27,8 +27,15 @@
       "fs": {
         "all": false,
         "readFile": false,
+        "writeFile": true,
         "readDir": true,
-        "scope": ["$HOME/Documents/MINDORA/**"]
+        "scope": [
+          "$DOCUMENT/MINDORA/**",
+          "$APPDATA/MINDORA/**",
+          "$HOME/.local/share/MINDORA/**",
+          "$DOWNLOAD/**",
+          "$DESKTOP/**"
+        ]
       }
     },
     "bundle": {
@@ -54,7 +61,7 @@
       }
     },
     "security": {
-      "csp": null
+      "csp": "default-src 'self' tauri: https://tauri.localhost; connect-src http://127.0.0.1:8000; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:"
     },
     "windows": [
       {

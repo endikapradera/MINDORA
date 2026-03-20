@@ -320,6 +320,14 @@ def _split_sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def _strip_context_artifacts(text: str) -> str:
+    cleaned = text or ""
+    cleaned = re.sub(r"\[FUENTE\s+\d+\][^\n]*", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\[PAGE\s+\d+\]", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\[IMAGEN[^\]]*\]", " ", cleaned, flags=re.I)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def _clean_extractive_text(text: str) -> str:
     text = re.sub(r"©\s*Copyright[^\.\n]*", "", text, flags=re.I)
     text = re.sub(r"\b\d{1,3}\s*/\s*\d{1,2}/\d{2,4}\b", "", text)
@@ -329,6 +337,43 @@ def _clean_extractive_text(text: str) -> str:
     return text
 
 
+def _is_noisy_sentence(text: str) -> bool:
+    s = (text or "").strip()
+    if not s:
+        return True
+
+    lower = s.lower()
+    if any(
+        marker in lower
+        for marker in [
+            "sin texto extraíble",
+            "sin texto extraible",
+            "tamaño",
+            "px",
+            "[imagen",
+            "[page",
+            "chunk",
+        ]
+    ):
+        return True
+
+    if len(s.split()) < 5:
+        return True
+
+    alpha = sum(1 for ch in s if ch.isalpha())
+    digits = sum(1 for ch in s if ch.isdigit())
+    if alpha < max(10, int(len(s) * 0.35)):
+        return True
+    if digits > int(len(s) * 0.22):
+        return True
+
+    upper_alpha = sum(1 for ch in s if ch.isalpha() and ch.isupper())
+    if alpha > 0 and (upper_alpha / alpha) > 0.58 and len(s) > 45:
+        return True
+
+    return False
+
+
 def _rank_sentences(question: str, sentences: list[str]) -> list[str]:
     q_tokens = set(re.findall(r"[a-záéíóúñ0-9]{4,}", question.lower()))
     scored: list[tuple[int, int, str]] = []
@@ -336,12 +381,52 @@ def _rank_sentences(question: str, sentences: list[str]) -> list[str]:
         cleaned = _clean_extractive_text(sentence)
         if len(cleaned) < 25:
             continue
+        if _is_noisy_sentence(cleaned):
+            continue
         s_tokens = set(re.findall(r"[a-záéíóúñ0-9]{4,}", cleaned.lower()))
         overlap = len(q_tokens.intersection(s_tokens))
         scored.append((overlap, -i, cleaned))
     scored.sort(reverse=True)
     ranked = [text for _, _, text in scored if text]
-    return ranked or [_clean_extractive_text(s) for s in sentences]
+    fallback_clean = [
+        _clean_extractive_text(s)
+        for s in sentences
+        if _clean_extractive_text(s) and not _is_noisy_sentence(_clean_extractive_text(s))
+    ]
+    return ranked or fallback_clean
+
+
+def _extract_topic_from_question(question: str) -> str:
+    q = (question or "").strip().lower()
+    q = re.sub(r"[¿?]", "", q)
+    q = re.sub(r"(?i)\bdel\s+pdf\b.*$", "", q).strip()
+    patterns = [
+        r"(?:qué|que)\s+es\s+(.+)",
+        r"define\s+(.+)",
+        r"definici[oó]n\s+de\s+(.+)",
+        r"explica\s+(.+)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, q, flags=re.I)
+        if m:
+            return m.group(1).strip(" .,:;-")
+    return ""
+
+
+def _best_definition_sentence(question: str, ranked: list[str]) -> str | None:
+    topic = _extract_topic_from_question(question)
+    topic_tokens = set(re.findall(r"[a-záéíóúñ0-9]{4,}", topic.lower())) if topic else set()
+
+    for sentence in ranked:
+        lower = sentence.lower()
+        if not any(k in lower for k in [" es ", " se define", " consiste en", " es el", " es la"]):
+            continue
+        if not topic_tokens:
+            return sentence
+        s_tokens = set(re.findall(r"[a-záéíóúñ0-9]{4,}", lower))
+        if len(topic_tokens.intersection(s_tokens)) >= 1:
+            return sentence
+    return None
 
 
 def generate_answer_fallback(
@@ -353,11 +438,17 @@ def generate_answer_fallback(
     if not contexts:
         return "No encontré información suficiente en el contexto para responder."
 
-    merged = "\n\n".join(contexts[:3])
+    clean_contexts = [_strip_context_artifacts(c) for c in contexts[:4] if c and c.strip()]
+    merged = "\n\n".join(clean_contexts)
     sentences = _split_sentences(merged)
     if not sentences:
         return contexts[0][:700]
     ranked = _rank_sentences(question, sentences)
+    if not ranked:
+        return (
+            "No encontré fragmentos suficientemente claros del documento para responder con precisión. "
+            "Prueba con una pregunta más concreta (por ejemplo: '¿Qué es el riesgo residual según el PDF?')."
+        )
 
     q = question.lower()
     wants_steps = response_style in {"pasos", "detallada_pasos"} or "paso a paso" in q or "fácil" in q
@@ -383,16 +474,25 @@ def generate_answer_fallback(
 
     if response_style == "profesor":
         selected = ranked[:4]
+        definition = _best_definition_sentence(question, ranked)
+        intro = definition or (selected[0] if selected else "")
+        bullets = [s for s in selected if s != intro][:2]
+        example = next((s for s in ranked if re.search(r"\b(ejemplo|por ejemplo|caso)\b", s, flags=re.I)), "")
+        if not example and len(selected) > 2:
+            example = selected[2]
         result = "\n".join(
             [
-                "Introducción:",
-                selected[0] if selected else "",
+                "Definición breve:",
+                intro,
                 "",
-                "Desarrollo:",
-                "- " + "\n- ".join(selected[1:3]) if len(selected) > 1 else "",
+                "Puntos clave:",
+                "- " + "\n- ".join(bullets) if bullets else "",
                 "",
                 "Ejemplo guiado:",
-                selected[3] if len(selected) > 3 else "",
+                example,
+                "",
+                "Para comprobar que lo entendiste:",
+                "¿Cómo lo explicarías tú en una frase con tus propias palabras?",
             ]
         ).strip()
         return _postprocess_answer(result, "profesor")
