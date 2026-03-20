@@ -1034,6 +1034,38 @@ body.light-mode textarea.input-error {
   font-size: 1rem;
 }
 
+.perf-card details {
+  font-size: 0.88rem;
+}
+
+.perf-card summary {
+  cursor: pointer;
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.perf-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.perf-grid > div {
+  border: 1px solid #2a3c57;
+  border-radius: 8px;
+  padding: 8px;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.perf-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
 body.light-mode .study-no-branch {
   background: #fefce8;
   border-color: #fbbf24;
@@ -1095,6 +1127,19 @@ body.light-mode .history-empty {
 body.light-mode .study-chat-main {
   background: linear-gradient(180deg, #ffffff, #f8fbff);
   border-color: #d7e5f7;
+}
+
+body.light-mode .perf-card summary {
+  color: #1e3a8a;
+}
+
+body.light-mode .perf-grid > div {
+  background: #ffffff;
+  border-color: #dbeafe;
+}
+
+body.light-mode .perf-label {
+  color: #64748b;
 }
 
 body.light-mode .menu-panel {

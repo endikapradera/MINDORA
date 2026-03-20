@@ -84,6 +84,11 @@ export default function App() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
   const [sessionSearch, setSessionSearch] = useState("");
+  const [lastResponseMs, setLastResponseMs] = useState<number | null>(null);
+  const [avgResponseMs, setAvgResponseMs] = useState<number | null>(null);
+  const [backendPingMs, setBackendPingMs] = useState<number | null>(null);
+  const [browserMemoryMb, setBrowserMemoryMb] = useState<number | null>(null);
+  const [perfSamples, setPerfSamples] = useState<number[]>([]);
   const [answer, setAnswer] = useState("");
   const [learnPhraseText, setLearnPhraseText] = useState("");
   const [sources, setSources] = useState<string[]>([]);
@@ -156,6 +161,27 @@ export default function App() {
   const isExamenes = activeSection === "examenes";
   const isProgreso = activeSection === "progreso";
   const isConfig = activeSection === "config";
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const mem = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
+      if (mem?.usedJSHeapSize) {
+        setBrowserMemoryMb(Math.round((mem.usedJSHeapSize / (1024 * 1024)) * 10) / 10);
+      }
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(async () => {
+      const t0 = performance.now();
+      const ok = await checkHealth();
+      if (ok) {
+        setBackendPingMs(Math.round(performance.now() - t0));
+      }
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // ── Backend health polling ─────────────────────────────────────────────
   useEffect(() => {
@@ -434,6 +460,7 @@ export default function App() {
     if (!question.trim()) { setQuestionError("Escribe una pregunta para continuar."); return; }
     if (question.trim().length < 3) { setQuestionError("La pregunta debe tener al menos 3 caracteres."); return; }
     try {
+      const requestStart = performance.now();
       const userMessage: ChatMessage = {
         role: "user",
         content: question,
@@ -463,6 +490,16 @@ export default function App() {
       if (result.session_id) {
         setSessionId(result.session_id);
       }
+
+      const elapsed = Math.round(performance.now() - requestStart);
+      setLastResponseMs(elapsed);
+      setPerfSamples((prev) => {
+        const next = [...prev, elapsed].slice(-20);
+        const avg = Math.round(next.reduce((a, b) => a + b, 0) / next.length);
+        setAvgResponseMs(avg);
+        return next;
+      });
+
       setStatus("Respuesta generada");
     } catch (err) {
       const detail = err instanceof Error ? err.message : "No se pudo procesar la pregunta";
@@ -1508,6 +1545,36 @@ export default function App() {
           </>
         )}
       </div>}
+
+      {isConfig && (
+        <div className="card perf-card">
+          <details>
+            <summary>📈 Rendimiento local</summary>
+            <div className="perf-grid">
+              <div>
+                <span className="perf-label">Backend ping</span>
+                <strong>{backendPingMs ?? "-"} {backendPingMs !== null ? "ms" : ""}</strong>
+              </div>
+              <div>
+                <span className="perf-label">Última respuesta IA</span>
+                <strong>{lastResponseMs ?? "-"} {lastResponseMs !== null ? "ms" : ""}</strong>
+              </div>
+              <div>
+                <span className="perf-label">Media (últimas 20)</span>
+                <strong>{avgResponseMs ?? "-"} {avgResponseMs !== null ? "ms" : ""}</strong>
+              </div>
+              <div>
+                <span className="perf-label">Memoria UI (aprox.)</span>
+                <strong>{browserMemoryMb ?? "-"} {browserMemoryMb !== null ? "MB" : ""}</strong>
+              </div>
+              <div>
+                <span className="perf-label">Muestras</span>
+                <strong>{perfSamples.length}</strong>
+              </div>
+            </div>
+          </details>
+        </div>
+      )}
 
       {(isDashboard || isProgreso) && <div className="card">
         <h3>Progreso de simulacros</h3>
