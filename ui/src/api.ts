@@ -149,11 +149,15 @@ export async function askRag(
   sessionId?: string,
   documentId?: number
 ): Promise<AskResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
   const res = await fetch(`${BASE_URL}/api/ask?branch=${encodeURIComponent(branch)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, top_k: topK, response_style: responseStyle, session_id: sessionId ?? null, document_id: documentId ?? null })
+    body: JSON.stringify({ question, top_k: topK, response_style: responseStyle, session_id: sessionId ?? null, document_id: documentId ?? null }),
+    signal: controller.signal,
   });
+  clearTimeout(timeout);
   if (!res.ok) throw await toApiError(res, "Error en ask");
   return res.json();
 }

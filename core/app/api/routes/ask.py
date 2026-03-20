@@ -39,6 +39,36 @@ def _unclear_question_message() -> str:
     )
 
 
+def _smalltalk_answer(question: str) -> Optional[str]:
+    q = (question or "").strip().lower()
+    q_norm = re.sub(r"\s+", " ", q)
+    greetings = [
+        "hola",
+        "hola como estas",
+        "hola cómo estás",
+        "hola que tal",
+        "hola qué tal",
+        "como estas",
+        "cómo estás",
+        "que tal",
+        "qué tal",
+        "buenas",
+        "buenos dias",
+        "buenos días",
+        "buenas tardes",
+        "buenas noches",
+    ]
+    if q_norm in greetings:
+        return (
+            "¡Hola! Estoy listo para ayudarte 😊\n\n"
+            "Si quieres estudiar, prueba con algo como:\n"
+            "- 'Resúmeme este tema en 5 puntos'\n"
+            "- 'Explícame la diferencia entre X e Y'\n"
+            "- 'Ponme 10 preguntas tipo test de este documento'"
+        )
+    return None
+
+
 def _dimseg_knowledge_answer(question: str) -> Optional[str]:
     q = (question or "").lower()
 
@@ -154,6 +184,11 @@ def _infer_document_id_from_question(branch: str, question: str) -> Optional[int
 def ask(payload: AskRequest, branch: str):
     session_id = payload.session_id or uuid.uuid4().hex
     document_id = payload.document_id or _infer_document_id_from_question(branch, payload.question)
+
+    smalltalk = _smalltalk_answer(payload.question)
+    if smalltalk:
+        append_chat_turn(branch, session_id, payload.question, smalltalk)
+        return AskResponse(answer=smalltalk, contexts=[], sources=[], session_id=session_id)
 
     if _question_is_unclear(payload.question):
         return AskResponse(
