@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from app.storage.branches import get_branch_path, branch_exists
 
@@ -102,7 +103,7 @@ def _session_title(data: dict) -> str:
     return "Conversación sin título"
 
 
-def list_sessions(branch: str, q: str | None = None) -> list[dict]:
+def list_sessions(branch: str, q: Optional[str] = None) -> list[dict]:
     """Return metadata for all sessions in a branch, newest first."""
     if not branch_exists(branch):
         return []

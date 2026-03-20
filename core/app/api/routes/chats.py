@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from typing import Optional
 
 from app.services.chat_memory import (
     list_sessions,
@@ -34,7 +35,7 @@ class PinRequest(BaseModel):
 
 # ── List all sessions ──────────────────────────────────────────────────────────
 @router.get("/{branch}")
-def get_sessions(branch: str, q: str | None = Query(default=None)) -> list[dict]:
+def get_sessions(branch: str, q: Optional[str] = Query(default=None)) -> list[dict]:
     """Return session metadata for all saved conversations in a branch."""
     if not branch_exists(branch):
         raise HTTPException(status_code=404, detail=f"Rama '{branch}' no encontrada")
