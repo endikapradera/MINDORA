@@ -12,8 +12,11 @@ from app.services.intent_dictionary import detect_intent_and_style
 from app.services.style_preferences import recommend_style
 from app.storage.config import get_base_dir
 
+ResponseStyle = Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero", "codigo"]
+ModelRole = Literal["profesor", "codigo"]
 
-_LLM_INSTANCE: Llama | None = None
+
+_LLM_INSTANCES: dict[str, Llama] = {}
 _LLM_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
@@ -81,10 +84,13 @@ def _should_use_safe_mode() -> bool:
     return sys.platform == "darwin" and sys.version_info < (3, 10)
 
 
-def _model_path() -> str:
-    path = os.getenv("IA_OFFLINE_LLM_PATH")
+def _model_path(role: ModelRole = "profesor") -> str:
+    env_name = "IA_OFFLINE_CODE_LLM_PATH" if role == "codigo" else "IA_OFFLINE_LLM_PATH"
+    path = os.getenv(env_name)
+    if role == "codigo" and not path:
+        path = os.getenv("IA_OFFLINE_LLM_PATH")
     if not path:
-        raise RuntimeError("LLM model path not configured. Set IA_OFFLINE_LLM_PATH.")
+        raise RuntimeError(f"LLM model path not configured. Set {env_name}.")
     return path
 
 
@@ -109,16 +115,17 @@ def _lora_adapter_path() -> str | None:
     return None
 
 
-def get_llm() -> Llama:
-    global _LLM_INSTANCE
-    if _LLM_INSTANCE is not None:
-        return _LLM_INSTANCE
+def get_llm(role: ModelRole = "profesor") -> Llama:
+    cached = _LLM_INSTANCES.get(role)
+    if cached is not None:
+        return cached
 
     with _LLM_LOCK:
-        if _LLM_INSTANCE is not None:
-            return _LLM_INSTANCE
+        cached = _LLM_INSTANCES.get(role)
+        if cached is not None:
+            return cached
 
-        path = _model_path()
+        path = _model_path(role)
         n_ctx = int(os.getenv("IA_OFFLINE_LLM_CTX", "2048"))
         n_threads = int(os.getenv("IA_OFFLINE_LLM_THREADS", "1"))
         n_batch = int(os.getenv("IA_OFFLINE_LLM_BATCH", "128"))
@@ -135,12 +142,78 @@ def get_llm() -> Llama:
             llama_kwargs["lora_path"] = adapter
 
         try:
-            _LLM_INSTANCE = Llama(**llama_kwargs)
+            _LLM_INSTANCES[role] = Llama(**llama_kwargs)
         except TypeError:
             # Backward-compatible fallback for llama_cpp versions without lora_path.
             llama_kwargs.pop("lora_path", None)
-            _LLM_INSTANCE = Llama(**llama_kwargs)
-        return _LLM_INSTANCE
+            _LLM_INSTANCES[role] = Llama(**llama_kwargs)
+        return _LLM_INSTANCES[role]
+
+
+def _infer_model_role(question: str, response_style: ResponseStyle) -> ModelRole:
+    if response_style == "codigo":
+        return "codigo"
+    return "profesor"
+
+
+def _extract_code_snippet(question: str) -> str:
+    fenced = re.findall(r"```(?:\w+)?\n([\s\S]*?)```", question)
+    if fenced:
+        return fenced[0].strip()
+
+    lines = question.splitlines()
+    code_lines = []
+    for line in lines:
+        stripped = line.rstrip()
+        if re.search(r'[{}();=<>"\']', stripped) or stripped.lstrip().startswith(("def ", "class ", "const ", "let ", "var ", "import ", "from ")):
+            code_lines.append(stripped)
+    return "\n".join(code_lines[:40]).strip()
+
+
+def _infer_code_language(question: str, snippet: str) -> str:
+    lower = f"{question}\n{snippet}".lower()
+    checks = [
+        ("python", ["def ", "import ", "python", "except", "print("]),
+        ("typescript", [": string", ": number", "interface ", "type ", "typescript"]),
+        ("javascript", ["function ", "console.log", "=>", "javascript", "const ", "let "]),
+        ("html", ["<div", "<html", "<script", "</"]),
+        ("css", ["{", "color:", "display:", ".class", "#id"]),
+        ("sql", ["select ", "insert ", "update ", "delete ", " from "]),
+    ]
+    for lang, markers in checks:
+        if any(marker in lower for marker in markers):
+            return lang
+    return "text"
+
+
+def _build_code_prompt(question: str, history: list[dict] | None = None) -> tuple[str, int]:
+    snippet = _extract_code_snippet(question)
+    language = _infer_code_language(question, snippet)
+    history_block = ""
+    if history:
+        turns: list[str] = []
+        for msg in history[-6:]:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if content:
+                turns.append(f"{role.upper()}: {content}")
+        if turns:
+            history_block = "\nHistorial reciente:\n" + "\n".join(turns)
+
+    prompt = (
+        "Eres MINDORA-CODE, un asistente offline especializado en programación.\n"
+        "Reglas estrictas:\n"
+        "- Si el usuario pega código, analízalo directamente.\n"
+        "- No inventes APIs inexistentes.\n"
+        "- Responde siempre en 4 bloques: 1) Qué hace/problema 2) Solución 3) Código final 4) Explicación breve.\n"
+        "- Si falta contexto, pide el fragmento o error exacto.\n"
+        f"Lenguaje inferido: {language}.\n"
+        f"{history_block}\n\n"
+        f"Petición del usuario:\n{question}\n\n"
+        f"Código detectado:\n{snippet or '[no code snippet detected]'}\n\n"
+        "Respuesta:"
+    )
+    return prompt, 700
 
 
 def build_prompt(question: str, contexts: list[str]) -> str:
@@ -429,12 +502,43 @@ def _best_definition_sentence(question: str, ranked: list[str]) -> str | None:
     return None
 
 
+def generate_code_answer_fallback(question: str, history: list[dict] | None = None) -> str:
+    snippet = _extract_code_snippet(question)
+    language = _infer_code_language(question, snippet)
+
+    if not snippet:
+        return (
+            "1) Qué veo / problema\n"
+            "No has pegado suficiente código para analizarlo con precisión.\n\n"
+            "2) Solución\n"
+            "Pega la función, el error o el fragmento exacto y te lo reviso en modo código.\n\n"
+            "3) Código final\n"
+            "```text\n// Pega aquí tu código o mensaje de error\n```\n\n"
+            "4) Explicación breve\n"
+            "Con el snippet podré decirte qué hace, dónde falla y cómo corregirlo."
+        )
+
+    first_line = snippet.splitlines()[0][:120] if snippet.splitlines() else snippet[:120]
+    return (
+        "1) Qué hace / problema\n"
+        f"He detectado una consulta de código en {language}. El fragmento principal empieza por: {first_line}\n\n"
+        "2) Solución\n"
+        "Voy a centrarme en revisar la lógica, los posibles errores de sintaxis y la estructura. Si compartes también el error exacto, podré afinar más.\n\n"
+        f"3) Código final\n```{language}\n{snippet}\n```\n\n"
+        "4) Explicación breve\n"
+        "El modo código está activo. Si quieres que lo corrija o refactorice, dime: 'corrígelo', 'explícalo' o 'refactorízalo'."
+    )
+
+
 def generate_answer_fallback(
     question: str,
     contexts: list[str],
-    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"] = "auto",
+    response_style: ResponseStyle = "auto",
 ) -> str:
     """Deterministic extractive fallback used when local LLM is unstable/unavailable."""
+    if response_style == "codigo":
+        return generate_code_answer_fallback(question)
+
     if not contexts:
         return "No encontré información suficiente en el contexto para responder."
 
@@ -507,8 +611,14 @@ def generate_answer_fallback(
     return _postprocess_answer(result, response_style)
 
 
-def generate_text(prompt: str, max_tokens: int = 400, temperature: float = 0.2, stop: Sequence[str] | None = None) -> str:
-    llm = get_llm()
+def generate_text(
+    prompt: str,
+    max_tokens: int = 400,
+    temperature: float = 0.2,
+    stop: Sequence[str] | None = None,
+    model_role: ModelRole = "profesor",
+) -> str:
+    llm = get_llm(model_role)
     output = llm(
         prompt,
         max_tokens=max_tokens,
@@ -537,11 +647,17 @@ def _dedupe_lines(text: str) -> str:
 def generate_answer(
     question: str,
     contexts: list[str],
-    response_style: Literal["auto", "corta", "detallada", "pasos", "detallada_pasos", "examen", "profesor", "companero"] = "auto",
+    response_style: ResponseStyle = "auto",
     history: list[dict] | None = None,
 ) -> str:
     if _should_use_safe_mode():
         return generate_answer_fallback(question, contexts, response_style)
+
+    if response_style == "codigo":
+        prompt, max_tokens = _build_code_prompt(question, history=history)
+        raw = generate_text(prompt, max_tokens=max_tokens, temperature=0.1, stop=["\n\nPetición del usuario:"], model_role="codigo")
+        cleaned = _dedupe_lines(raw)
+        return _postprocess_answer(cleaned, "codigo")
 
     detected_intent, detected_style = detect_intent_and_style(question)
     preferred_style = recommend_style(question)
@@ -596,6 +712,12 @@ def generate_answer(
         f"Pregunta: {question}\n"
         "Respuesta:"
     )
-    raw = generate_text(prompt, max_tokens=max_tokens, temperature=0.15, stop=["\n\nPregunta:"])
+    raw = generate_text(
+        prompt,
+        max_tokens=max_tokens,
+        temperature=0.15,
+        stop=["\n\nPregunta:"],
+        model_role=_infer_model_role(question, effective_style),
+    )
     cleaned = _dedupe_lines(raw)
     return _postprocess_answer(cleaned, effective_style)

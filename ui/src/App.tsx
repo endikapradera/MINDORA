@@ -35,6 +35,7 @@ import type {
   DictionaryEntry,
   DocumentItem,
   ExamType,
+  ResponseStyle,
   SimulationQuestion,
   ExamSimulationSubmitResponse,
   ExamSimulationHistoryItem
@@ -97,6 +98,7 @@ export default function App() {
   const [examType, setExamType] = useState<ExamType>("mixto");
   const [examCount, setExamCount] = useState(10);
   const [retrievalDepth, setRetrievalDepth] = useState(6);
+  const [chatMode, setChatMode] = useState<ResponseStyle>("auto");
   const [examQualityMode, setExamQualityMode] = useState<"rapido" | "equilibrado" | "maximo">("equilibrado");
   const [examId, setExamId] = useState("");
   const [examAvgConfidence, setExamAvgConfidence] = useState<number | null>(null);
@@ -474,7 +476,7 @@ export default function App() {
         selectedBranch,
         question,
         retrievalDepth,
-        "profesor",
+        chatMode,
         sessionId,
         selectedStudyDocumentId === "all" ? undefined : selectedStudyDocumentId,
       );
@@ -913,9 +915,10 @@ export default function App() {
                 También puedes ver manualmente el contexto bruto con “Ver contexto”.
               </p>
 
-              <h3>4) Estilos de respuesta y aprendizaje de preferencias</h3>
+              <h3>4) Modos Auto, Profesor y Código</h3>
               <p>
-                Puedes forzar estilo corto, detallado, por pasos o automático. Además, con “Aprender frase” y feedback
+                Puedes usar modo Auto para que la app elija entre explicación y código, forzar modo Profesor para teoría
+                y documentos, o modo Código para analizar y generar programación. Además, con “Aprender frase” y feedback
                 útil/no útil, el sistema ajusta su diccionario de intenciones para responder mejor a tu forma de pedir.
               </p>
 
@@ -995,7 +998,8 @@ export default function App() {
               Para usar MINDORA necesitas el archivo del modelo de IA (formato <strong>.gguf</strong>).
             </p>
             <div className="result" style={{ textAlign: "left", marginBottom: 16 }}>
-              <p><strong>1.</strong> Descarga el modelo (ej: <em>mistral-7b-instruct-v0.2.Q4_K_M.gguf</em>)</p>
+              <p><strong>1.</strong> Descarga el modelo principal (ej: <em>qwen2.5-7b-instruct</em> en formato GGUF)</p>
+              <p><strong>1.b</strong> (Opcional) añade también <em>qwen2.5-coder-7b-instruct</em> para modo Código</p>
               <p><strong>2.</strong> Colócalo en esta carpeta:</p>
               <code style={{ display: "block", background: "#f1f5f9", padding: "8px 12px", borderRadius: 6, fontSize: "0.85rem", wordBreak: "break-all", margin: "8px 0" }}>
                 {modelExpectedDir}
@@ -1098,6 +1102,15 @@ export default function App() {
             <div className="study-chat-header-row">
               <h3 style={{ margin: 0 }}>Chat de estudio</h3>
               <div className="study-chat-header-controls">
+                <select
+                  value={chatMode}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setChatMode(e.target.value as ResponseStyle)}
+                  title="Modo de respuesta"
+                >
+                  <option value="auto">🤖 Auto</option>
+                  <option value="profesor">📚 Profesor</option>
+                  <option value="codigo">💻 Código</option>
+                </select>
                 <select
                   value={selectedStudyDocumentId}
                   onChange={(e: ChangeEvent<HTMLSelectElement>) => {

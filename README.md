@@ -45,8 +45,9 @@ Estructura principal:
 - Tesseract instalado en sistema
 
 ### Modelo LLM
-- Archivo GGUF, recomendado:
-  - `mistral-7b-instruct-v0.2.Q4_K_M.gguf`
+- Archivo GGUF, recomendados:
+   - `qwen2.5-7b-instruct` (principal)
+   - `qwen2.5-coder-7b-instruct` (código, opcional)
 
 Ubicación del modelo por OS:
 - macOS: `~/Documents/MINDORA/models/`

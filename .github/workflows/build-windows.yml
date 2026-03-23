@@ -150,5 +150,6 @@ jobs:
           Write-Host ""
           Write-Host "⚠️  Reminder: end-users must place the LLM model at:"
           Write-Host "   C:\Users\<name>\Documents\MINDORA\models\"
-          Write-Host "   Model: mistral-7b-instruct-v0.2.Q4_K_M.gguf (~4.1 GB)"
-          Write-Host "   https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF"
+           Write-Host "⚠️ Students also need the local GGUF model(s):"
+           Write-Host "   Main model: qwen2.5-7b-instruct (GGUF)"
+           Write-Host "   Optional code model: qwen2.5-coder-7b-instruct (GGUF)"

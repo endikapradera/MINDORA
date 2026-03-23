@@ -34,7 +34,7 @@ def _user_data_dir() -> Path:
         return home / ".local" / "share" / "MINDORA"
 
 
-def _find_llm_model() -> Optional[str]:
+def _find_llm_model(kind: str = "profesor") -> Optional[str]:
     """
     Search for a .gguf model file in standard locations.
     Priority:
@@ -44,8 +44,9 @@ def _find_llm_model() -> Optional[str]:
       4. ~/Desktop/MINDORA/models/ (legacy)
       5. Same directory as the executable
     """
-    if os.getenv("IA_OFFLINE_LLM_PATH"):
-        return os.environ["IA_OFFLINE_LLM_PATH"]
+    env_name = "IA_OFFLINE_CODE_LLM_PATH" if kind == "codigo" else "IA_OFFLINE_LLM_PATH"
+    if os.getenv(env_name):
+        return os.environ[env_name]
 
     home = Path.home()
     search_dirs: list = [
@@ -60,10 +61,24 @@ def _find_llm_model() -> Optional[str]:
     if appdata:
         search_dirs.insert(0, Path(appdata) / "MINDORA" / "models")
 
+    preferred_patterns = [
+        "*qwen*coder*.gguf",
+        "*coder*.gguf",
+    ] if kind == "codigo" else [
+        "*qwen*instruct*.gguf",
+        "*qwen*.gguf",
+        "*.gguf",
+    ]
+
     for d in search_dirs:
-        hits = sorted(glob.glob(str(d / "*.gguf")))
-        if hits:
-            return hits[0]
+        if not d.exists():
+            continue
+        for pattern in preferred_patterns:
+            hits = sorted(glob.glob(str(d / pattern)))
+            if kind == "profesor":
+                hits = [h for h in hits if "coder" not in Path(h).name.lower()] or hits
+            if hits:
+                return hits[0]
     return None
 
 
@@ -87,10 +102,11 @@ def main() -> None:
             os.environ["IA_OFFLINE_EMBEDDINGS_MODEL"] = str(bundled_emb)
 
     # -- Auto-discover LLM model --
-    model_path = _find_llm_model()
+    model_path = _find_llm_model("profesor")
+    code_model_path = _find_llm_model("codigo")
     if model_path:
         os.environ["IA_OFFLINE_LLM_PATH"] = model_path
-        print(f"[MINDORA] LLM model: {model_path}", flush=True)
+        print(f"[MINDORA] Main LLM model: {model_path}", flush=True)
     else:
         expected_dir = _user_data_dir() / "models"
         print(
@@ -100,6 +116,12 @@ def main() -> None:
         )
         # Still start the server - endpoints will return a clear error
         os.environ.setdefault("IA_OFFLINE_LLM_PATH", "__not_found__")
+
+    if code_model_path:
+        os.environ["IA_OFFLINE_CODE_LLM_PATH"] = code_model_path
+        print(f"[MINDORA] Code LLM model: {code_model_path}", flush=True)
+    elif model_path:
+        os.environ.setdefault("IA_OFFLINE_CODE_LLM_PATH", model_path)
 
     host = os.getenv("IA_OFFLINE_HOST", "127.0.0.1")
     port = int(os.getenv("IA_OFFLINE_PORT", "8000"))

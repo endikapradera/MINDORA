@@ -69,6 +69,33 @@ def _smalltalk_answer(question: str) -> Optional[str]:
     return None
 
 
+def _looks_like_code_request(question: str) -> bool:
+    q = question or ""
+    lower = q.lower()
+
+    if "```" in q:
+        return True
+
+    code_markers = [
+        "function ", "def ", "class ", "const ", "let ", "var ", "return ",
+        "import ", "from ", "console.log", "try:", "except", "=>", "{}", "();",
+        "javascript", "typescript", "python", "java", "c++", "sql", "html", "css",
+        "bug", "error", "traceback", "api", "endpoint", "refactor", "regex",
+    ]
+    if any(marker in lower for marker in code_markers):
+        return True
+
+    lines = q.splitlines()
+    suspicious_lines = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.search(r'[{}();=<>"\']', stripped) and len(stripped) >= 8:
+            suspicious_lines += 1
+    return suspicious_lines >= 2
+
+
 def _dimseg_knowledge_answer(question: str) -> Optional[str]:
     q = (question or "").lower()
 
@@ -190,6 +217,19 @@ def ask(payload: AskRequest, branch: str):
         append_chat_turn(branch, session_id, payload.question, smalltalk)
         return AskResponse(answer=smalltalk, contexts=[], sources=[], session_id=session_id)
 
+    effective_mode = payload.response_style
+    if effective_mode == "auto" and _looks_like_code_request(payload.question):
+        effective_mode = "codigo"
+
+    if effective_mode == "codigo":
+        try:
+            history = get_chat_history(branch, session_id)
+            answer = generate_answer(payload.question, [], "codigo", history=history)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=f"No se pudo generar respuesta de código: {str(exc)}")
+        append_chat_turn(branch, session_id, payload.question, answer)
+        return AskResponse(answer=answer, contexts=[], sources=[], session_id=session_id)
+
     if _question_is_unclear(payload.question):
         return AskResponse(
             answer=_unclear_question_message(),
@@ -298,7 +338,7 @@ def ask(payload: AskRequest, branch: str):
 
     try:
         history = get_chat_history(branch, session_id)
-        answer = generate_answer(payload.question, contexts, payload.response_style, history=history)
+        answer = generate_answer(payload.question, contexts, effective_mode, history=history)
     except RuntimeError as exc:
         raise HTTPException(
             status_code=400,

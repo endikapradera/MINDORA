@@ -45,7 +45,7 @@ export type StudyPackResponse = {
   sources: string[];
 };
 
-export type ResponseStyle = "auto" | "corta" | "detallada" | "pasos" | "detallada_pasos" | "examen" | "profesor" | "companero";
+export type ResponseStyle = "auto" | "corta" | "detallada" | "pasos" | "detallada_pasos" | "examen" | "profesor" | "companero" | "codigo";
 
 export type LearnPhrasePayload = {
   phrase: string;

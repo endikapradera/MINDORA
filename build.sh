@@ -136,7 +136,8 @@ else
   echo "   Windows model dir: %APPDATA%\\MINDORA\\models\\"
 fi
 echo ""
-echo "⚠️  IMPORTANT: Students also need the LLM model (.gguf file)."
-echo "   Model: mistral-7b-instruct-v0.2.Q4_K_M.gguf (~4.1GB)"
-echo "   Download: https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF"
+echo "⚠️  IMPORTANT: Students also need the local GGUF model(s)."
+echo "   Main model: qwen2.5-7b-instruct (GGUF)"
+echo "   Optional code model: qwen2.5-coder-7b-instruct (GGUF)"
+echo "   Tip: place both files in the models folder and MINDORA will auto-detect them."
 echo ""
