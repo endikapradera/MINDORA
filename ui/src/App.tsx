@@ -99,6 +99,9 @@ export default function App() {
   const [examCount, setExamCount] = useState(10);
   const [retrievalDepth, setRetrievalDepth] = useState(6);
   const [chatMode, setChatMode] = useState<ResponseStyle>("auto");
+  const [codeInstruction, setCodeInstruction] = useState("Explica qué hace este código y cómo mejorarlo.");
+  const [codeSnippet, setCodeSnippet] = useState("");
+  const [codeLanguage, setCodeLanguage] = useState("auto");
   const [examQualityMode, setExamQualityMode] = useState<"rapido" | "equilibrado" | "maximo">("equilibrado");
   const [examId, setExamId] = useState("");
   const [examAvgConfidence, setExamAvgConfidence] = useState<number | null>(null);
@@ -517,6 +520,72 @@ export default function App() {
         { role: "assistant", content: fallbackMessage, createdAt: new Date().toISOString() },
       ]);
       setSources([]);
+      showToast(`Error: ${detail}`, "err");
+    } finally {
+      setIsAsking(false);
+    }
+  }
+
+  async function handleAskCode() {
+    setQuestionError("");
+    if (!canUseBranch) { setQuestionError("Selecciona una rama en la barra superior primero."); return; }
+
+    const instruction = codeInstruction.trim();
+    const snippet = codeSnippet.trim();
+    if (!instruction && !snippet) {
+      setQuestionError("Escribe una instrucción o pega código para continuar.");
+      return;
+    }
+
+    const fenced = snippet
+      ? `\n\n\`\`\`${codeLanguage === "auto" ? "" : codeLanguage}\n${snippet}\n\`\`\``
+      : "";
+    const payloadQuestion = `${instruction || "Analiza este código."}${fenced}`;
+
+    try {
+      const requestStart = performance.now();
+      const userMessage: ChatMessage = {
+        role: "user",
+        content: `💻 ${instruction || "Consulta de código"}${snippet ? "\n\n[Snippet enviado]" : ""}`,
+        createdAt: new Date().toISOString(),
+      };
+      setChatMessages((prev) => [...prev, userMessage]);
+      setIsAsking(true);
+
+      const result = await askRag(
+        selectedBranch,
+        payloadQuestion,
+        retrievalDepth,
+        "codigo",
+        sessionId,
+        undefined,
+      );
+
+      setAnswer(result.answer);
+      setSources(result.sources ?? []);
+      setLastQuestion(payloadQuestion);
+      const assistantMessage: ChatMessage = {
+        role: "assistant",
+        content: result.answer,
+        createdAt: new Date().toISOString(),
+      };
+      setChatMessages((prev) => [...prev, assistantMessage]);
+      if (result.session_id) {
+        setSessionId(result.session_id);
+      }
+
+      const elapsed = Math.round(performance.now() - requestStart);
+      setLastResponseMs(elapsed);
+      setPerfSamples((prev) => {
+        const next = [...prev, elapsed].slice(-20);
+        const avg = Math.round(next.reduce((a, b) => a + b, 0) / next.length);
+        setAvgResponseMs(avg);
+        return next;
+      });
+
+      setStatus("Respuesta de código generada");
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "No se pudo procesar la consulta de código";
       showToast(`Error: ${detail}`, "err");
     } finally {
       setIsAsking(false);
@@ -999,7 +1068,7 @@ export default function App() {
             </p>
             <div className="result" style={{ textAlign: "left", marginBottom: 16 }}>
               <p><strong>1.</strong> Descarga el modelo principal (ej: <em>qwen2.5-7b-instruct</em> en formato GGUF)</p>
-              <p><strong>1.b</strong> (Opcional) añade también <em>qwen2.5-coder-7b-instruct</em> para modo Código</p>
+              <p><strong>1.b</strong> (Opcional) añade también <em>Devstral</em> para modo Código</p>
               <p><strong>2.</strong> Colócalo en esta carpeta:</p>
               <code style={{ display: "block", background: "#f1f5f9", padding: "8px 12px", borderRadius: 6, fontSize: "0.85rem", wordBreak: "break-all", margin: "8px 0" }}>
                 {modelExpectedDir}
@@ -1118,6 +1187,7 @@ export default function App() {
                     setSelectedStudyDocumentId(v === "all" ? "all" : Number(v));
                   }}
                   title="Filtrar por documento"
+                  disabled={chatMode === "codigo"}
                 >
                   <option value="all">📚 Todo el temario</option>
                   {documents.map((doc) => (
@@ -1128,6 +1198,7 @@ export default function App() {
                   value={retrievalDepth}
                   onChange={(e: ChangeEvent<HTMLSelectElement>) => setRetrievalDepth(Number(e.target.value))}
                   title="Profundidad de búsqueda"
+                  disabled={chatMode === "codigo"}
                 >
                   <option value={4}>🔍 Búsqueda rápida</option>
                   <option value={6}>🔍 Búsqueda equilibrada</option>
@@ -1281,22 +1352,66 @@ export default function App() {
                 </div>
 
                 <div className="chat-composer">
-                  <input
-                    placeholder={canUseBranch ? "Escribe una pregunta y pulsa Enter o ➤…" : "Selecciona una rama primero…"}
-                    value={question}
-                    className={questionError ? "input-error" : ""}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => { setQuestion(e.target.value); setQuestionError(""); }}
-                    onKeyDown={handleChatInputKeyDown}
-                    disabled={isAsking}
-                  />
-                  <button
-                    onClick={() => void handleAsk()}
-                    disabled={isAsking}
-                    className="send-btn"
-                    title="Enviar"
-                  >
-                    {isAsking ? "⏳" : "➤"}
-                  </button>
+                  {chatMode !== "codigo" ? (
+                    <>
+                      <input
+                        placeholder={canUseBranch ? "Escribe una pregunta y pulsa Enter o ➤…" : "Selecciona una rama primero…"}
+                        value={question}
+                        className={questionError ? "input-error" : ""}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => { setQuestion(e.target.value); setQuestionError(""); }}
+                        onKeyDown={handleChatInputKeyDown}
+                        disabled={isAsking}
+                      />
+                      <button
+                        onClick={() => void handleAsk()}
+                        disabled={isAsking}
+                        className="send-btn"
+                        title="Enviar"
+                      >
+                        {isAsking ? "⏳" : "➤"}
+                      </button>
+                    </>
+                  ) : (
+                    <div className="code-mode-composer">
+                      <div className="code-mode-header">
+                        <span className="badge">Modo código (Devstral)</span>
+                        <select
+                          value={codeLanguage}
+                          onChange={(e: ChangeEvent<HTMLSelectElement>) => setCodeLanguage(e.target.value)}
+                          disabled={isAsking}
+                        >
+                          <option value="auto">Auto</option>
+                          <option value="python">Python</option>
+                          <option value="javascript">JavaScript</option>
+                          <option value="typescript">TypeScript</option>
+                          <option value="java">Java</option>
+                          <option value="sql">SQL</option>
+                        </select>
+                      </div>
+                      <input
+                        placeholder="Qué quieres que haga con el código (explicar, corregir, refactorizar...)"
+                        value={codeInstruction}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => setCodeInstruction(e.target.value)}
+                        disabled={isAsking}
+                      />
+                      <textarea
+                        className="code-snippet-input"
+                        placeholder="Pega aquí tu código..."
+                        value={codeSnippet}
+                        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setCodeSnippet(e.target.value)}
+                        disabled={isAsking}
+                      />
+                      <div className="row">
+                        <button
+                          onClick={() => void handleAskCode()}
+                          disabled={isAsking}
+                          className="send-btn"
+                        >
+                          {isAsking ? "⏳" : "💻 Analizar código"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {questionError && <span className="field-error" style={{ marginTop: 4 }}>{questionError}</span>}
               </div>

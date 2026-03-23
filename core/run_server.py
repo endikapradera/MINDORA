@@ -62,6 +62,7 @@ def _find_llm_model(kind: str = "profesor") -> Optional[str]:
         search_dirs.insert(0, Path(appdata) / "MINDORA" / "models")
 
     preferred_patterns = [
+        "*devstral*.gguf",
         "*qwen*coder*.gguf",
         "*coder*.gguf",
     ] if kind == "codigo" else [

@@ -47,7 +47,7 @@ Estructura principal:
 ### Modelo LLM
 - Archivo GGUF, recomendados:
    - `qwen2.5-7b-instruct` (principal)
-   - `qwen2.5-coder-7b-instruct` (código, opcional)
+   - `devstral` (código, opcional)
 
 Ubicación del modelo por OS:
 - macOS: `~/Documents/MINDORA/models/`
@@ -67,6 +67,37 @@ Desde la raíz del repo:
 2. Frontend
    - `cd ../ui`
    - `npm install`
+
+## 5) Instalación de modelos de IA
+
+Los modelos se descargan automáticamente la primera vez que MINDORA los necesita, o puedes descargarlos manualmente:
+
+### Descarga manual (recomendado)
+
+```bash
+# Crea la carpeta de modelos según tu OS:
+
+# macOS
+mkdir -p ~/Documents/MINDORA/models
+
+# Windows (PowerShell)
+New-Item -ItemType Directory -Force -Path "$env:APPDATA\MINDORA\models"
+
+# Linux
+mkdir -p ~/.local/share/MINDORA/models
+```
+
+### Modelos necesarios:
+
+1. **Qwen 2.5 7B Instruct** (educación)
+   - Descarga: https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF
+   - Archivo: `Qwen2.5-7B-Instruct-Q4_K_M.gguf` (4.4 GB)
+
+2. **Devstral Small 2505** (código, opcional pero recomendado)
+   - Descarga: https://huggingface.co/mistralai/Devstral-Small-2505_gguf
+   - Archivo: `devstralQ4_K_M.gguf` (13 GB)
+
+Copia ambos archivos a la carpeta de modelos y reinicia MINDORA.
 
 3. Ejecutar en dev
    - Terminal 1: backend (FastAPI/Uvicorn)

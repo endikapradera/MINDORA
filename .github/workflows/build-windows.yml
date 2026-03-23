@@ -152,4 +152,4 @@ jobs:
           Write-Host "   C:\Users\<name>\Documents\MINDORA\models\"
            Write-Host "⚠️ Students also need the local GGUF model(s):"
            Write-Host "   Main model: qwen2.5-7b-instruct (GGUF)"
-           Write-Host "   Optional code model: qwen2.5-coder-7b-instruct (GGUF)"
+           Write-Host "   Optional code model: Devstral (GGUF)"
