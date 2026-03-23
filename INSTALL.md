@@ -1,3 +1,128 @@
+# 🚀 MINDORA - Guía de Instalación Completa
+## ⚡ Quick Start (2 minutos)
+### 1. Clonar repositorio
+```bash
+git clone https://github.com/endikapradera/MINDORA.git
+cd MINDORA/MINDORA
+### 2. Ejecutar instalador automático
+```bash
+chmod +x install.sh
+./install.sh
+### 3. Iniciar sistema
+```bash
+# Terminal 1 - Backend
+python3 core/run_server.py
+
+# Terminal 2 - Tests
+python3 core/test_temario_qa.py
+---
+## 📋 Requisitos Previos
+
+- **Python**: 3.9 o superior
+- **Node.js**: 16 o superior
+- **Git**: 2.0 o superior
+- **RAM**: 8 GB mínimo (16 GB recomendado)
+- **Espacio disco**: 30 GB (para modelos GGUF)
+### Verificar instalación
+```bash
+python3 --version
+node --version
+git --version
+---
+## 📥 Descargar Modelos
+
+Los modelos se descargarán automáticamente la primera vez, o puedes descargarlos manualmente:
+### Opción 1: Descargar Automático
+El `install.sh` intentará descargarlos automáticamente.
+### Opción 2: Descargar Manualmente
+
+**Qwen 2.5-7B-Instruct** (4.4 GB)
+- Descarga desde: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF
+- Archivo: `Qwen2.5-7B-Instruct-Q4_K_M.gguf`
+**Devstral-Small** (13 GB)
+- Descarga desde: https://huggingface.co/mistralai/Devstral-Small-2505_gguf
+- Archivo: `devstralQ4_K_M.gguf`
+**Colocar en:**
+```
+~/Documents/MINDORA/models/
+```
+---
+## 🔧 Instalación Manual (Paso a Paso)
+
+Si prefieres instalar manualmente:
+### 1. Clonar repositorio
+```bash
+git clone https://github.com/endikapradera/MINDORA.git
+cd MINDORA/MINDORA
+### 2. Frontend
+```bash
+cd ui
+npm install
+npm run build
+cd ..
+### 3. Backend
+```bash
+pip3 install -r requirements.txt
+### 4. Crear directorio de modelos
+```bash
+mkdir -p ~/Documents/MINDORA/models
+# Coloca los archivos .gguf aquí
+---
+## 🚀 Iniciando MINDORA
+
+### Opción 1: Ambas Terminales (Recomendado)
+
+**Terminal 1:**
+```bash
+python3 core/run_server.py
+**Terminal 2:**
+```bash
+python3 core/test_temario_qa.py
+### Opción 2: Backend en Background
+```bash
+python3 core/run_server.py &
+sleep 5
+python3 core/test_temario_qa.py
+pkill -f run_server
+---
+## 🌐 Usando la API
+
+### Hacer una pregunta
+```bash
+curl -X POST http://127.0.0.1:8000/api/ask \
+    -H "Content-Type: application/json" \
+    -d '{
+    "question": "¿Qué es inteligencia artificial?",
+    "response_style": "corta"
+    }' \
+    -G -d "branch=principal"
+### Estilos disponibles
+- `auto`, `corta`, `detallada`, `pasos`, `examen`, `profesor`, `companero`, `codigo`
+---
+## 🧪 Testing
+
+```bash
+python3 core/test_temario_qa.py
+Resultado esperado: **30/30 tests pasados (100%)**
+---
+## 🐛 Troubleshooting
+
+| Problema | Solución |
+|----------|----------|
+| "Connection refused" | Verifica que backend está corriendo |
+| "ModuleNotFoundError: fastapi" | Ejecuta `pip3 install -r requirements.txt` |
+| "No se encuentran modelos" | Descarga los archivos .gguf en ~/Documents/MINDORA/models/ |
+| "Puerto 8000 en uso" | `pkill -f run_server` |
+| "npm: command not found" | Instala Node.js desde nodejs.org |
+---
+## 📚 Documentación Adicional
+
+- **QUICK_START.md** - Referencia rápida
+- **README_COMPLETO.md** - Documentación exhaustiva
+- **TEST_REPORT.md** - Resultados de testing
+---
+*MINDORA v1.0 - IA Educativa Offline*  
+*GitHub: https://github.com/endikapradera/MINDORA*
 # 📚 MINDORA — Guía de instalación para alumnos
 
 ## ¿Qué necesitas?
