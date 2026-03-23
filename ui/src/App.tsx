@@ -9,6 +9,7 @@ import {
   fetchBranches,
   checkHealth,
   getSetupStatus,
+  getExamTopics,
   generateStudyPack,
   getDailyRecommendations,
   getSimulationHistory,
@@ -35,6 +36,7 @@ import type {
   DictionaryEntry,
   DocumentItem,
   ExamType,
+  ExamTopicItem,
   ResponseStyle,
   SimulationQuestion,
   ExamSimulationSubmitResponse,
@@ -94,6 +96,8 @@ export default function App() {
   const [learnPhraseText, setLearnPhraseText] = useState("");
   const [sources, setSources] = useState<string[]>([]);
   const [examTopic, setExamTopic] = useState("");
+  const [examTopics, setExamTopics] = useState<ExamTopicItem[]>([]);
+  const [examTopicsLoading, setExamTopicsLoading] = useState(false);
   const [examDifficulty, setExamDifficulty] = useState("media");
   const [examType, setExamType] = useState<ExamType>("mixto");
   const [examCount, setExamCount] = useState(10);
@@ -327,7 +331,10 @@ export default function App() {
       loadDocuments(selectedBranch);
       loadSimulationHistory(selectedBranch);
       loadDailyRecs(selectedBranch);
+      void loadExamTopics(selectedBranch);
       void loadChatSessions();
+    } else {
+      setExamTopics([]);
     }
   }, [selectedBranch]);
 
@@ -357,6 +364,27 @@ export default function App() {
     } catch {
       setDailyRecs([]);
       setDailyRecsMsg("");
+    }
+  }
+
+  async function loadExamTopics(branch: string) {
+    setExamTopicsLoading(true);
+    try {
+      const data = await getExamTopics(branch, 24);
+      setExamTopics(data.topics);
+      if (data.topics.length > 0) {
+        setExamTopic((prev) => {
+          const current = prev.trim().toLowerCase();
+          if (current && data.topics.some((item) => item.name.trim().toLowerCase() === current)) {
+            return prev;
+          }
+          return data.topics[0].name;
+        });
+      }
+    } catch {
+      setExamTopics([]);
+    } finally {
+      setExamTopicsLoading(false);
     }
   }
 
@@ -1478,12 +1506,43 @@ export default function App() {
         {isExamenes && <div className="card">
           <h3>Generar examen</h3>
           <input
-            placeholder="Tema del examen"
+            list="exam-topic-suggestions"
+            placeholder={canUseBranch ? "Tema del examen" : "Selecciona una rama con documentos"}
             value={examTopic}
             className={examTopicError ? "input-error" : ""}
             onChange={(e: ChangeEvent<HTMLInputElement>) => { setExamTopic(e.target.value); setExamTopicError(""); }}
           />
+          <datalist id="exam-topic-suggestions">
+            {examTopics.map((topic) => (
+              <option key={topic.name} value={topic.name}>{topic.name}</option>
+            ))}
+          </datalist>
           {examTopicError && <span className="field-error">{examTopicError}</span>}
+
+          {canUseBranch && (
+            <div className="result" style={{ marginTop: 10 }}>
+              <strong>Temas detectados en esta rama:</strong>{" "}
+              {examTopicsLoading ? "cargando…" : `${examTopics.length} encontrados`}
+              {examTopics.length > 0 && (
+                <div className="row" style={{ marginTop: 8, flexWrap: "wrap", gap: 8 }}>
+                  {examTopics.slice(0, 12).map((topic) => (
+                    <button
+                      key={topic.name}
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        setExamTopic(topic.name);
+                        setExamTopicError("");
+                      }}
+                      title={`Usar tema ${topic.name}`}
+                    >
+                      {topic.name} ({topic.count})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <details className="menu-panel" open>
             <summary>⚙️ Configuración del examen</summary>

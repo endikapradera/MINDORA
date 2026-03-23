@@ -70,6 +70,16 @@ export type ExamGenerateResponse = {
   distractor_warnings: string[];
 };
 
+export type ExamTopicItem = {
+  name: string;
+  count: number;
+};
+
+export type ExamTopicsResponse = {
+  branch: string;
+  topics: ExamTopicItem[];
+};
+
 export type ExamType = "test_simple" | "test_multiple" | "desarrollo" | "mixto";
 
 export type ExportKind = "exam" | "answer_key";

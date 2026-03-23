@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from app.schemas.exams import (
     ExamGenerateRequest,
     ExamGenerateResponse,
+    ExamTopicsResponse,
     ExamExportResponse,
     ExamSolveUploadResponse,
     ExamSimulationStartRequest,
@@ -23,8 +24,17 @@ from app.services.exams import (
     submit_exam_simulation,
     get_simulation_history,
 )
+from app.services.topic_catalog import list_branch_topics
 
 router = APIRouter()
+
+
+@router.get("/topics", response_model=ExamTopicsResponse)
+def list_topics(branch: str, limit: int = 24):
+    try:
+        return ExamTopicsResponse(branch=branch, topics=list_branch_topics(branch, max_topics=limit))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Branch not found")
 
 
 @router.post("/generate", response_model=ExamGenerateResponse)

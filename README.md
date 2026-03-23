@@ -1,6 +1,12 @@
 # MINDORA
 
+<p align="center">
+   <img src="logo-app.png" alt="MINDORA" width="180" />
+</p>
+
 Aplicación de escritorio educativa **offline** (Tauri + React + FastAPI + LLM local).
+
+➡️ Guía completa: [README_COMPLETO.md](README_COMPLETO.md)
 
 ## 1) Qué es
 
@@ -141,7 +147,7 @@ Copia ambos archivos a la carpeta de modelos y reinicia MINDORA.
 - `cd core`
 - `python3 -m pytest -q`
 
-Estado actual: **110 passed**.
+Estado actual: **112 passed**.
 
 ### Frontend
 - `cd ui`

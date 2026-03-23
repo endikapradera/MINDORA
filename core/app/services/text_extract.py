@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import re
 from collections import Counter
 from pathlib import Path
@@ -18,6 +19,8 @@ logger = logging.getLogger(__name__)
 _OCR_THRESHOLD = 60
 # Minimum image size (px) to attempt OCR / description
 _MIN_IMG_PX = 80
+_OCR_TIMEOUT_SECONDS = int(os.getenv("MINDORA_OCR_TIMEOUT_SECONDS", "8"))
+_OCR_EMBEDDED_IMAGES = os.getenv("MINDORA_OCR_EMBEDDED_IMAGES", "0") == "1"
 # A line present in more than this fraction of pages is considered a header/footer
 _HEADER_FOOTER_THRESHOLD = 0.40
 
@@ -98,9 +101,14 @@ def _remove_repeated_lines(per_page_texts: list[str], threshold: float = _HEADER
 def _ocr_pil_image(img: Image.Image) -> str:
     """Run Tesseract OCR on a PIL image, return cleaned text."""
     try:
-        text = pytesseract.image_to_string(img, lang="spa+eng", config="--psm 6")
+        text = pytesseract.image_to_string(
+            img,
+            lang="spa+eng",
+            config="--psm 6",
+            timeout=_OCR_TIMEOUT_SECONDS,
+        )
         return text.strip()
-    except Exception as exc:  # pragma: no cover
+    except BaseException as exc:  # pragma: no cover
         logger.warning("OCR error: %s", exc)
         return ""
 
@@ -157,7 +165,11 @@ def _extract_pdf(path: Path) -> str:
     img_counter = 0
 
     for i, page in enumerate(reader.pages, start=1):
-        native_text = (page.extract_text() or "").strip()
+        try:
+            native_text = (page.extract_text() or "").strip()
+        except BaseException as exc:  # pragma: no cover
+            logger.warning("Native PDF extraction failed for page %d: %s", i, exc)
+            native_text = ""
 
         # --- Native text path ---
         if len(native_text) >= _OCR_THRESHOLD:
@@ -171,22 +183,23 @@ def _extract_pdf(path: Path) -> str:
                     pil_img = _fitz_page_to_pil(fitz_page)
                     ocr_text = _ocr_pil_image(pil_img)
                     logger.info("PAGE %d: OCR aplicado (%d chars)", i, len(ocr_text))
-                except Exception as exc:  # pragma: no cover
+                except BaseException as exc:  # pragma: no cover
                     logger.warning("OCR fallback failed for page %d: %s", i, exc)
 
             combined = (native_text + "\n" + ocr_text).strip()
             page_parts = [f"[PAGE {i}]\n{combined}"] if combined else []
 
         # --- Embedded images in page ---
-        try:
-            for img_obj in page.images:
-                img_counter += 1
-                raw = img_obj.data
-                desc = _describe_image_from_bytes(raw, f"p{i}-{img_counter}")
-                if desc:
-                    page_parts.append(desc)
-        except Exception:  # pragma: no cover
-            pass  # pypdf may not expose images on all versions
+        if _OCR_EMBEDDED_IMAGES:
+            try:
+                for img_obj in page.images:
+                    img_counter += 1
+                    raw = img_obj.data
+                    desc = _describe_image_from_bytes(raw, f"p{i}-{img_counter}")
+                    if desc:
+                        page_parts.append(desc)
+            except Exception:  # pragma: no cover
+                pass  # pypdf may not expose images on all versions
 
         parts.extend(page_parts)
 

@@ -10,6 +10,7 @@ import type {
   ExamSimulationSubmitResponse,
   ExamSimulationHistoryResponse,
   ExamType,
+  ExamTopicsResponse,
   ExportKind,
   ExamExportResponse,
   ExamGenerateResponse,
@@ -196,6 +197,14 @@ export async function generateExam(
     body: JSON.stringify({ topic, num_questions: numQuestions, difficulty, top_k: topK, exam_type: examType })
   });
   if (!res.ok) throw await toApiError(res, "Error generando examen");
+  return res.json();
+}
+
+export async function getExamTopics(branch: string, limit = 24): Promise<ExamTopicsResponse> {
+  const res = await fetch(
+    `${BASE_URL}/api/exams/topics?branch=${encodeURIComponent(branch)}&limit=${limit}`
+  );
+  if (!res.ok) throw await toApiError(res, "Error cargando temas de examen");
   return res.json();
 }
 

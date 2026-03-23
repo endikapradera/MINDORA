@@ -20,6 +20,16 @@ class ExamGenerateResponse(BaseModel):
     distractor_warnings: list[str] = []
 
 
+class ExamTopicItem(BaseModel):
+    name: str
+    count: int = Field(default=1, ge=0)
+
+
+class ExamTopicsResponse(BaseModel):
+    branch: str
+    topics: list[ExamTopicItem]
+
+
 class ExamExportResponse(BaseModel):
     path: str
 
