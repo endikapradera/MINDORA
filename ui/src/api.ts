@@ -150,15 +150,41 @@ export async function askRag(
   sessionId?: string,
   documentId?: number
 ): Promise<AskResponse> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
-  const res = await fetch(`${BASE_URL}/api/ask?branch=${encodeURIComponent(branch)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, top_k: topK, response_style: responseStyle, session_id: sessionId ?? null, document_id: documentId ?? null }),
-    signal: controller.signal,
+  const body = JSON.stringify({
+    question,
+    top_k: topK,
+    response_style: responseStyle,
+    session_id: sessionId ?? null,
+    document_id: documentId ?? null,
   });
-  clearTimeout(timeout);
+
+  const runAttempt = async (): Promise<Response> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 240_000);
+    try {
+      return await fetch(`${BASE_URL}/api/ask?branch=${encodeURIComponent(branch)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  let res: Response;
+  try {
+    res = await runAttempt();
+  } catch (err) {
+    const recoverable =
+      err instanceof DOMException ||
+      (err instanceof Error && /abort|timeout|network|failed to fetch/i.test(err.message));
+    if (!recoverable) throw err;
+    // Retry once on transient timeout/network failure
+    res = await runAttempt();
+  }
+
   if (!res.ok) throw await toApiError(res, "Error en ask");
   return res.json();
 }
@@ -191,11 +217,15 @@ export async function generateExam(
   topK: number,
   examType: ExamType
 ): Promise<ExamGenerateResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 240_000);
   const res = await fetch(`${BASE_URL}/api/exams/generate?branch=${encodeURIComponent(branch)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ topic, num_questions: numQuestions, difficulty, top_k: topK, exam_type: examType })
+    body: JSON.stringify({ topic, num_questions: numQuestions, difficulty, top_k: topK, exam_type: examType }),
+    signal: controller.signal,
   });
+  clearTimeout(timeout);
   if (!res.ok) throw await toApiError(res, "Error generando examen");
   return res.json();
 }

@@ -207,6 +207,91 @@ def _parse_fallback_questions(raw: str) -> list[dict]:
     return out
 
 
+def _context_sentences(context_texts: list[str]) -> list[str]:
+    joined = "\n".join(context_texts)
+    parts = re.split(r"(?<=[\.!\?])\s+", re.sub(r"\s+", " ", joined).strip())
+    sentences: list[str] = []
+    for p in parts:
+        clean = p.strip(" -\n\t")
+        if len(clean) >= 40:
+            sentences.append(clean)
+    return sentences
+
+
+def _strip_leading_connector(text: str) -> str:
+    return re.sub(r"^(que|se|la|el|los|las|un|una)\s+", "", text.strip(), flags=re.IGNORECASE)
+
+
+def _heuristic_questions_from_context(
+    *,
+    topic: str,
+    exam_type: str,
+    context_texts: list[str],
+    num_questions: int,
+) -> list[dict]:
+    if num_questions <= 0:
+        return []
+
+    sents = _context_sentences(context_texts)
+    if not sents:
+        return []
+
+    def sent_at(idx: int) -> str:
+        return sents[idx % len(sents)]
+
+    out: list[dict] = []
+    for i in range(num_questions):
+        base = sent_at(i)
+        alt_1 = sent_at(i + 1)
+        alt_2 = sent_at(i + 2)
+        alt_3 = sent_at(i + 3)
+
+        if exam_type == "desarrollo":
+            q_type = "desarrollo"
+        elif exam_type == "test_multiple":
+            q_type = "test_multiple"
+        elif exam_type == "test_simple":
+            q_type = "test_simple"
+        else:
+            cycle = ["test_simple", "test_multiple", "desarrollo"]
+            q_type = cycle[i % len(cycle)]
+
+        statement_seed = _strip_leading_connector(base)
+        statement = f"Sobre {topic}, explica o identifica: {statement_seed[:180]}"
+
+        if q_type == "desarrollo":
+            out.append(
+                {
+                    "number": i + 1,
+                    "type": q_type,
+                    "statement": statement,
+                    "options": [],
+                    "answer": base,
+                    "explanation": "Respuesta construida a partir del contexto del temario.",
+                }
+            )
+            continue
+
+        options = [
+            f"A) {alt_1[:120]}",
+            f"B) {base[:120]}",
+            f"C) {alt_2[:120]}",
+            f"D) {alt_3[:120]}",
+        ]
+        answer = "B,C" if q_type == "test_multiple" else "B"
+        out.append(
+            {
+                "number": i + 1,
+                "type": q_type,
+                "statement": statement,
+                "options": options,
+                "answer": answer,
+                "explanation": "Seleccionada según evidencia textual del contexto.",
+            }
+        )
+    return _dedupe_questions(out)
+
+
 def _normalize_question_statement(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
 
@@ -254,7 +339,10 @@ def _complete_missing_questions(
         f"Preguntas ya existentes (NO repetir):\n{existing_statements}\n\n"
         f"Contexto:\n{context_block}\n"
     )
-    extra_raw = generate_text(completion_prompt, max_tokens=900, temperature=0.15)
+    try:
+        extra_raw = generate_text(completion_prompt, max_tokens=900, temperature=0.15)
+    except Exception:
+        return []
     extra = _parse_generated_questions(extra_raw)
     if not extra:
         extra = _parse_fallback_questions(extra_raw)
@@ -327,25 +415,42 @@ def generate_exam(
         f"Contexto:\n{context_block}\n\n"
         f"Instrucción: {prompt}"
     )
-    raw_content = generate_text(full_prompt, max_tokens=900, temperature=0.2)
+    raw_content = ""
+    try:
+        raw_content = generate_text(full_prompt, max_tokens=900, temperature=0.2)
+    except Exception:
+        raw_content = ""
+
     questions = _parse_generated_questions(raw_content)
     if len(questions) < max(1, min(num_questions, 3)):
-        repair_prompt = (
-            "Reescribe el texto siguiente al formato exacto requerido. No inventes contenido nuevo.\n"
-            "Formato exacto por bloque:\n"
-            "### Pregunta N\n"
-            "Tipo: test_simple | test_multiple | desarrollo\n"
-            "Enunciado: ...\n"
-            "Opciones:\n"
-            "A) ...\nB) ...\nC) ...\nD) ...\n"
-            "Respuesta: ...\n"
-            "Explicacion: ...\n\n"
-            f"Texto a reestructurar:\n{raw_content}\n"
+        if raw_content:
+            repair_prompt = (
+                "Reescribe el texto siguiente al formato exacto requerido. No inventes contenido nuevo.\n"
+                "Formato exacto por bloque:\n"
+                "### Pregunta N\n"
+                "Tipo: test_simple | test_multiple | desarrollo\n"
+                "Enunciado: ...\n"
+                "Opciones:\n"
+                "A) ...\nB) ...\nC) ...\nD) ...\n"
+                "Respuesta: ...\n"
+                "Explicacion: ...\n\n"
+                f"Texto a reestructurar:\n{raw_content}\n"
+            )
+            try:
+                repaired = generate_text(repair_prompt, max_tokens=900, temperature=0.1)
+            except Exception:
+                repaired = ""
+            questions = _parse_generated_questions(repaired)
+            if not questions:
+                questions = _parse_fallback_questions(raw_content)
+
+    if not questions:
+        questions = _heuristic_questions_from_context(
+            topic=topic,
+            exam_type=exam_type,
+            context_texts=context_texts,
+            num_questions=max(1, num_questions),
         )
-        repaired = generate_text(repair_prompt, max_tokens=900, temperature=0.1)
-        questions = _parse_generated_questions(repaired)
-        if not questions:
-            questions = _parse_fallback_questions(raw_content)
 
     questions = _dedupe_questions(questions)
 
@@ -360,6 +465,15 @@ def generate_exam(
             missing=missing,
         )
         questions = _dedupe_questions(questions + extra_questions)
+
+    if len(questions) < num_questions:
+        heuristic_extra = _heuristic_questions_from_context(
+            topic=topic,
+            exam_type=exam_type,
+            context_texts=context_texts,
+            num_questions=num_questions,
+        )
+        questions = _dedupe_questions(questions + heuristic_extra)
 
     if len(questions) < max(1, min(num_questions, 3)):
         raise RuntimeError("No se pudo generar un examen estructurado. Intenta con otro temario o topic más concreto.")

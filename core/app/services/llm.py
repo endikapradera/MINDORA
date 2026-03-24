@@ -4,10 +4,11 @@ import os
 import re
 import threading
 import sys
+import json
+from urllib import error as urlerror
+from urllib import request as urlrequest
 from pathlib import Path
-from typing import Sequence, Literal
-
-from llama_cpp import Llama
+from typing import Sequence, Literal, Any
 from app.services.intent_dictionary import detect_intent_and_style
 from app.services.style_preferences import recommend_style
 from app.storage.config import get_base_dir
@@ -16,7 +17,7 @@ ResponseStyle = Literal["auto", "corta", "detallada", "pasos", "detallada_pasos"
 ModelRole = Literal["profesor", "codigo"]
 
 
-_LLM_INSTANCES: dict[str, Llama] = {}
+_LLM_INSTANCES: dict[str, Any] = {}
 _LLM_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
@@ -84,6 +85,90 @@ def _should_use_safe_mode() -> bool:
     return sys.platform == "darwin" and sys.version_info < (3, 10)
 
 
+def _openai_enabled() -> bool:
+    if _bool_env("IA_NATURAL_OPENAI_ENABLED", False):
+        return True
+    return bool(os.getenv("IA_OPENAI_API_KEY"))
+
+
+def _openai_base_url() -> str:
+    base = os.getenv("IA_OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
+    return base.rstrip("/")
+
+
+def _openai_model(role: ModelRole) -> str:
+    if role == "codigo":
+        return os.getenv("IA_OPENAI_CODE_MODEL") or os.getenv("IA_OPENAI_MODEL") or "gpt-4o-mini"
+    return os.getenv("IA_OPENAI_MODEL") or "gpt-4o-mini"
+
+
+def _generate_text_openai(
+    prompt: str,
+    *,
+    max_tokens: int,
+    temperature: float,
+    stop: Sequence[str] | None,
+    model_role: ModelRole,
+) -> str:
+    api_key = os.getenv("IA_OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("Falta IA_OPENAI_API_KEY para usar el proveedor OpenAI.")
+
+    endpoint = f"{_openai_base_url()}/chat/completions"
+    payload = {
+        "model": _openai_model(model_role),
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Eres MINDORA, un asistente educativo preciso y natural. "
+                    "No inventes datos y mantén respuestas útiles, claras y en español."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": float(max(0.0, min(1.0, temperature))),
+        "max_tokens": int(max(64, min(4096, max_tokens))),
+    }
+    if stop:
+        payload["stop"] = list(stop)
+
+    req = urlrequest.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    timeout = float(os.getenv("IA_OPENAI_TIMEOUT_SEC", "120"))
+
+    try:
+        with urlrequest.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except urlerror.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        raise RuntimeError(f"OpenAI HTTP {exc.code}: {body[:220]}")
+    except Exception as exc:
+        raise RuntimeError(f"OpenAI request failed: {exc}")
+
+    try:
+        data = json.loads(raw)
+        content = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+    except Exception as exc:
+        raise RuntimeError(f"OpenAI parse error: {exc}")
+
+    if not content:
+        raise RuntimeError("OpenAI devolvió una respuesta vacía.")
+    return content
+
+
 def _model_path(role: ModelRole = "profesor") -> str:
     env_name = "IA_OFFLINE_CODE_LLM_PATH" if role == "codigo" else "IA_OFFLINE_LLM_PATH"
     path = os.getenv(env_name)
@@ -115,7 +200,7 @@ def _lora_adapter_path() -> str | None:
     return None
 
 
-def get_llm(role: ModelRole = "profesor") -> Llama:
+def get_llm(role: ModelRole = "profesor") -> Any:
     cached = _LLM_INSTANCES.get(role)
     if cached is not None:
         return cached
@@ -124,6 +209,11 @@ def get_llm(role: ModelRole = "profesor") -> Llama:
         cached = _LLM_INSTANCES.get(role)
         if cached is not None:
             return cached
+
+        try:
+            from llama_cpp import Llama
+        except Exception as exc:
+            raise RuntimeError(f"No se pudo cargar llama-cpp-python: {exc}")
 
         path = _model_path(role)
         n_ctx = int(os.getenv("IA_OFFLINE_LLM_CTX", "2048"))
@@ -618,6 +708,25 @@ def generate_text(
     stop: Sequence[str] | None = None,
     model_role: ModelRole = "profesor",
 ) -> str:
+    if _should_use_safe_mode() and not _openai_enabled():
+        raise RuntimeError(
+            "LLM local desactivado en modo seguro. "
+            "Activa IA_OPENAI_API_KEY o usa respuestas extractivas/fallback."
+        )
+
+    if _openai_enabled():
+        try:
+            return _generate_text_openai(
+                prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stop=stop,
+                model_role=model_role,
+            )
+        except Exception:
+            if _bool_env("IA_OPENAI_STRICT", False):
+                raise
+
     llm = get_llm(model_role)
     output = llm(
         prompt,

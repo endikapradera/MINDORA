@@ -231,8 +231,10 @@ def ask(payload: AskRequest, branch: str):
         return AskResponse(answer=answer, contexts=[], sources=[], session_id=session_id)
 
     if _question_is_unclear(payload.question):
+        answer = _unclear_question_message()
+        append_chat_turn(branch, session_id, payload.question, answer)
         return AskResponse(
-            answer=_unclear_question_message(),
+            answer=answer,
             contexts=[],
             sources=[],
             session_id=session_id,
@@ -240,6 +242,7 @@ def ask(payload: AskRequest, branch: str):
 
     curated_answer = _dimseg_knowledge_answer(payload.question)
     if curated_answer:
+        append_chat_turn(branch, session_id, payload.question, curated_answer)
         curated_sources: list[str] = []
         if document_id is not None:
             try:
@@ -261,11 +264,13 @@ def ask(payload: AskRequest, branch: str):
         with get_session(branch) as session:
             has_docs = session.exec(select(Document.id).limit(1)).first() is not None
         if not has_docs:
+            answer = (
+                "Esta rama todavía no tiene documentos.\n\n"
+                "Sugerencia: ve a Temarios → Ingesta de documentos y sube primero el PDF '1-RESUMEN DIMSEG.pdf'."
+            )
+            append_chat_turn(branch, session_id, payload.question, answer)
             return AskResponse(
-                answer=(
-                    "Esta rama todavía no tiene documentos.\n\n"
-                    "Sugerencia: ve a Temarios → Ingesta de documentos y sube primero el PDF '1-RESUMEN DIMSEG.pdf'."
-                ),
+                answer=answer,
                 contexts=[],
                 sources=[],
                 session_id=session_id,
@@ -311,11 +316,13 @@ def ask(payload: AskRequest, branch: str):
         else:
             sources.append(f"{filename} (chunk {chunk_index}, {content_type}, {tema})")
     if not contexts:
+        answer = (
+            "No encontré información suficiente en los documentos de esta rama para responder con precisión.\n\n"
+            "Sugerencia: sube apuntes sobre ese tema o reformula la pregunta con términos del temario."
+        )
+        append_chat_turn(branch, session_id, payload.question, answer)
         return AskResponse(
-            answer=(
-                "No encontré información suficiente en los documentos de esta rama para responder con precisión.\n\n"
-                "Sugerencia: sube apuntes sobre ese tema o reformula la pregunta con términos del temario."
-            ),
+            answer=answer,
             contexts=[],
             sources=[],
             session_id=session_id,
@@ -326,11 +333,13 @@ def ask(payload: AskRequest, branch: str):
         top_score = float(results[0].get("score", 0.0))
         avg_score = sum(float(r.get("score", 0.0)) for r in results) / max(1, len(results))
         if top_score < _LOW_EVIDENCE_TOP_SCORE and avg_score < _LOW_EVIDENCE_AVG_SCORE:
+            answer = (
+                "No lo sé con suficiente certeza usando la evidencia disponible en esta rama.\n\n"
+                "Prueba con una pregunta más concreta o añade material adicional sobre ese tema."
+            )
+            append_chat_turn(branch, session_id, payload.question, answer)
             return AskResponse(
-                answer=(
-                    "No lo sé con suficiente certeza usando la evidencia disponible en esta rama.\n\n"
-                    "Prueba con una pregunta más concreta o añade material adicional sobre ese tema."
-                ),
+                answer=answer,
                 contexts=contexts,
                 sources=sources,
                 session_id=session_id,

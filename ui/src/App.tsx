@@ -61,6 +61,8 @@ type ChatMessage = {
   createdAt: string;
 };
 
+const MINDORA_PUBLIC_LINK = "https://mindora2026.netlify.app/hecho";
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -73,9 +75,10 @@ export default function App() {
   // ──────────────────────────────────────────────────────────────────────
   const [branchName, setBranchName] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [selectedStudyDocumentId, setSelectedStudyDocumentId] = useState<number | "all">("all");
   const [question, setQuestion] = useState("");
@@ -83,7 +86,7 @@ export default function App() {
   const [isAsking, setIsAsking] = useState(false);
   const chatThreadRef = useRef<HTMLDivElement>(null);
   const [lastQuestion, setLastQuestion] = useState("");
-  const [sessionId, setSessionId] = useState<string>(crypto.randomUUID());
+  const [sessionId, setSessionId] = useState<string>("");
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
   const [sessionSearch, setSessionSearch] = useState("");
@@ -148,6 +151,10 @@ export default function App() {
   const [darkMode, setDarkMode] = useState<boolean>(() => localStorage.getItem("mindora.theme") !== "light");
 
   const canUseBranch = useMemo(() => selectedBranch.length > 0, [selectedBranch]);
+  const currentBranchSessionId = useMemo(
+    () => (selectedBranch ? `main-${selectedBranch}` : "main-no-branch"),
+    [selectedBranch]
+  );
   const completedSimulations = useMemo(
     () => simulationHistory.filter((x) => x.score_percent !== null && x.score_percent !== undefined),
     [simulationHistory]
@@ -291,6 +298,15 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  async function handleOpenMindoraLink() {
+    try {
+      const { open } = await import("@tauri-apps/api/shell");
+      await open(MINDORA_PUBLIC_LINK);
+    } catch {
+      window.open(MINDORA_PUBLIC_LINK, "_blank", "noopener,noreferrer");
+    }
+  }
+
   function getErrorMessage(err: unknown, fallback: string): string {
     if (err instanceof Error && err.message.trim().length > 0) return err.message;
     return fallback;
@@ -328,13 +344,18 @@ export default function App() {
 
   useEffect(() => {
     if (selectedBranch) {
+      const mainSessionId = `main-${selectedBranch}`;
+      setSessionId(mainSessionId);
       loadDocuments(selectedBranch);
       loadSimulationHistory(selectedBranch);
       loadDailyRecs(selectedBranch);
       void loadExamTopics(selectedBranch);
       void loadChatSessions();
+      void handleOpenSession(mainSessionId, true);
     } else {
       setExamTopics([]);
+      setChatMessages([]);
+      setSessionId("main-no-branch");
     }
   }, [selectedBranch]);
 
@@ -459,23 +480,42 @@ export default function App() {
       setFileError("Selecciona una rama primero.");
       return;
     }
-    if (!file) {
-      setFileError("Selecciona un archivo para subir.");
+    if (files.length === 0) {
+      setFileError("Selecciona al menos un archivo para subir.");
       return;
     }
     const allowed = [".pdf", ".docx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"];
-    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
-    if (!allowed.includes(ext)) {
-      setFileError(`Formato no soportado (${ext}). Usa PDF, DOCX, PPTX, TXT o imagen.`);
+
+    const invalidFile = files.find((selectedFile) => {
+      const ext = selectedFile.name.slice(selectedFile.name.lastIndexOf(".")).toLowerCase();
+      return !allowed.includes(ext);
+    });
+    if (invalidFile) {
+      const ext = invalidFile.name.slice(invalidFile.name.lastIndexOf(".")).toLowerCase();
+      setFileError(`Formato no soportado en ${invalidFile.name} (${ext}). Usa PDF, DOCX, PPTX, TXT o imagen.`);
       return;
     }
+
     try {
       setIsUploading(true);
       setUploadProgress(0);
-      const result = await ingestDocument(selectedBranch, file, (percent) => setUploadProgress(percent));
-      showToast(`✅ Documento subido: ${file.name} (${result.chunks} fragmentos)`);
+      let uploadedCount = 0;
+
+      for (const [index, selectedFile] of files.entries()) {
+        setStatus(`Subiendo ${index + 1}/${files.length}: ${selectedFile.name}`);
+        await ingestDocument(selectedBranch, selectedFile, (percent) => {
+          const overallPercent = Math.round(((index + percent / 100) / files.length) * 100);
+          setUploadProgress(overallPercent);
+        });
+        uploadedCount += 1;
+      }
+
       await loadDocuments(selectedBranch);
-      setFile(null);
+      setFiles([]);
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = "";
+      }
+      showToast(`✅ ${uploadedCount} documento(s) subido(s) correctamente`);
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(0);
@@ -536,12 +576,7 @@ export default function App() {
       setStatus("Respuesta generada");
     } catch (err) {
       const detail = err instanceof Error ? err.message : "No se pudo procesar la pregunta";
-      const fallbackMessage =
-        "No he entendido o no he podido procesar esa pregunta en este momento.\n\n"
-        + "Prueba así:\n"
-        + "- 'Explícamelo fácil en 5 puntos'\n"
-        + "- 'Resúmelo como si fuera para examen'\n"
-        + "- '¿Cuáles son las ideas clave de este tema?'";
+      const fallbackMessage = `No he podido responder ahora mismo: ${detail}`;
       setAnswer(fallbackMessage);
       setChatMessages((prev) => [
         ...prev,
@@ -631,7 +666,8 @@ export default function App() {
     if (!selectedBranch) return;
     try {
       const sessions = await listChatSessions(selectedBranch, searchQuery ?? sessionSearch);
-      setChatSessions(sessions);
+      const active = sessions.find((s) => s.session_id === currentBranchSessionId);
+      setChatSessions(active ? [active] : []);
     } catch {
       setChatSessions([]);
     }
@@ -641,11 +677,11 @@ export default function App() {
     setChatMessages([]);
     setAnswer("");
     setSources([]);
-    setSessionId(crypto.randomUUID());
+    setSessionId(currentBranchSessionId);
     void loadChatSessions();
   }
 
-  async function handleOpenSession(sId: string) {
+  async function handleOpenSession(sId: string, silent = false) {
     if (!selectedBranch) return;
     try {
       const data = await loadChatSession(selectedBranch, sId);
@@ -658,7 +694,9 @@ export default function App() {
       setSessionId(sId);
       setShowSessionsPanel(false);
     } catch {
-      showToast("No se pudo cargar la sesión", "err");
+      if (!silent) {
+        showToast("No se pudo cargar la sesión", "err");
+      }
     }
   }
 
@@ -867,8 +905,10 @@ export default function App() {
       setExamAvgConfidence(result.avg_confidence ?? null);
       setExamWarnings(result.distractor_warnings ?? []);
       showToast("✅ Examen generado correctamente");
-    } catch {
-      setExamTopicError("Error al generar el examen. Asegúrate de tener documentos en la rama.");
+    } catch (err) {
+      const detail = getErrorMessage(err, "Error al generar el examen. Asegúrate de tener documentos en la rama.");
+      setExamTopicError(detail);
+      showToast(detail, "err");
     }
   }
 
@@ -1147,6 +1187,7 @@ export default function App() {
           </select>
 
           <button onClick={() => void handleRefresh()}>Refrescar</button>
+          <button onClick={() => void handleOpenMindoraLink()}>Abrir enlace web</button>
         </div>
       </div>}
 
@@ -1337,13 +1378,11 @@ export default function App() {
                       <p className="history-empty">Aún no hay preguntas en esta sesión.</p>
                     ) : (
                       <ul>
-                        {chatMessages
-                          .filter((m) => m.role === "user")
-                          .slice(-8)
-                          .reverse()
-                          .map((m, idx) => (
-                            <li key={`${m.createdAt}-${idx}`}>{m.content}</li>
-                          ))}
+                        {(() => {
+                          const lastUserQuestion = [...chatMessages].reverse().find((m) => m.role === "user");
+                          if (!lastUserQuestion) return null;
+                          return <li key={`last-${lastUserQuestion.createdAt}`}>{lastUserQuestion.content}</li>;
+                        })()}
                       </ul>
                     )}
                     <button
@@ -1471,15 +1510,31 @@ export default function App() {
           {!canUseBranch && <span className="field-error">Selecciona una rama antes de subir documentos.</span>}
           <div className="upload-form-group">
             <input
+              ref={uploadInputRef}
               type="file"
+              multiple
+              accept=".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg"
               className={fileError ? "input-error" : ""}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => { setFile(e.target.files?.[0] ?? null); setFileError(""); }}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                setFiles(Array.from(e.target.files ?? []));
+                setFileError("");
+              }}
               disabled={isUploading}
             />
             <button onClick={handleIngest} disabled={!canUseBranch || isUploading}>
               {isUploading ? "Subiendo..." : "Subir"}
             </button>
           </div>
+          {files.length > 0 && (
+            <div className="result" style={{ marginTop: 12 }}>
+              <strong>Archivos seleccionados ({files.length}):</strong>
+              <ul>
+                {files.map((selectedFile) => (
+                  <li key={`${selectedFile.name}-${selectedFile.size}`}>{selectedFile.name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {isUploading && (
             <div className="upload-progress">
               <div className="progress-bar-container">
