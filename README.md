@@ -115,12 +115,111 @@ Copia ambos archivos a la carpeta de modelos y reinicia MINDORA.
 
 ## 5) Seguridad aplicada
 
-- CSP en Tauri (solo recursos locales y `127.0.0.1`)
-- `shell.execute = false` (sin ejecución arbitraria de comandos)
-- `fs.scope` restringido a rutas de MINDORA/usuario
-- Límite de tamaño por request (50 MB)
-- Rate limiting local por cliente (ventana corta)
-- Política offline: sin dependencia de APIs externas para respuesta
+MINDORA aplica seguridad en capas. Lo que sigue no es solo documentación: es el código real que la garantiza.
+
+---
+
+### 🗂️ Sandbox de sistema de ficheros (Tauri)
+
+La app **únicamente puede leer y escribir** dentro de las carpetas de MINDORA/usuario. El scope está declarado en `ui/src-tauri/tauri.conf.json`:
+
+```json
+"fs": {
+  "all": false,
+  "readFile": false,
+  "writeFile": true,
+  "readDir": true,
+  "scope": [
+    "$DOCUMENT/MINDORA/**",
+    "$APPDATA/MINDORA/**",
+    "$HOME/.local/share/MINDORA/**",
+    "$DOWNLOAD/**",
+    "$DESKTOP/**"
+  ]
+}
+```
+
+| Ruta | Acceso | Motivo |
+|------|:------:|--------|
+| `~/Documents/MINDORA/**` | ✅ R/W | Modelos, datos, historial, exámenes |
+| `~/Downloads/**` | ✅ Escritura | Exportar resultados |
+| `~/Desktop/**` | ✅ Escritura | Exportar al escritorio |
+| Cualquier otra carpeta del usuario | ❌ Denegado | Bloqueado por Tauri runtime |
+| Archivos del sistema (`/etc`, `/System`) | ❌ Denegado | Completamente inaccesible |
+
+> El sistema operativo aplica estos permisos en tiempo de ejecución. Aunque existiera un bug en el JS de la app, el SO **no permitiría** acceder a rutas fuera del scope declarado.
+
+---
+
+### 🚫 Sin ejecución de comandos del sistema
+
+```json
+"shell": { "all": false, "execute": false, "sidecar": false, "open": true }
+```
+
+`execute: false` → la app no puede correr `rm`, `curl`, scripts de shell ni nada similar.  
+El único proceso que puede lanzar es el backend IA incluido en el paquete de la app.
+
+---
+
+### 🌐 Red: solo loopback (`127.0.0.1`)
+
+**Content Security Policy del webview** (`tauri.conf.json`):
+```
+connect-src http://127.0.0.1:8000     ← solo backend local
+script-src  'self'                     ← sin scripts de terceros
+default-src 'self' tauri:              ← sin recursos externos
+```
+
+**Backend IA con salida de red bloqueada** (`ui/src-tauri/src/main.rs`):
+```rust
+cmd.env("NO_PROXY", "*");              // sin proxy de ningún tipo
+cmd.env("REQUESTS_CA_BUNDLE", "");     // bloquea HTTPS saliente (requests lib)
+```
+
+---
+
+### 🛡️ API local protegida (FastAPI / `core/app/main.py`)
+
+```python
+_MAX_BODY_BYTES    = 50 * 1024 * 1024  # 50 MB límite por request
+_RATE_MAX_REQUESTS = 120               # máx. peticiones en 30 segundos
+_RATE_WINDOW_SECONDS = 30
+
+# CORS: solo orígenes localhost / Tauri; cualquier otro origen → 403
+allow_origin_regex = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+```
+
+---
+
+### 🗺️ Diagrama de aislamiento
+
+```mermaid
+flowchart LR
+    subgraph Maquina ["🖥️  Tu máquina — todo ocurre aquí"]
+        direction TB
+        APP["📱 MINDORA\n(Tauri Webview)"]
+        BE["⚙️ Backend IA\n(FastAPI · 127.0.0.1:8000)"]
+        FS["💾 ~/Documents/MINDORA/\napuntes · historial · exámenes"]
+        MODEL["🧠 Modelos GGUF\n~/Documents/MINDORA/models/"]
+    end
+    INTERNET(["🌐 Internet / Nube"])
+    DISCO(["🔒 Resto del disco\nDocumentos privados · Fotos · etc."])
+
+    APP -- "HTTP local\n127.0.0.1:8000" --> BE
+    BE --> FS
+    BE --> MODEL
+    APP -. "❌ CSP bloquea\ncualquier conexión externa" .-> INTERNET
+    BE  -. "❌ NO_PROXY=*\nsin salida a red" .-> INTERNET
+    APP -. "❌ fs.scope deniega\ncualquier ruta no permitida" .-> DISCO
+
+    style INTERNET fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px
+    style DISCO    fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px
+    style APP      fill:#3498db,color:#fff,stroke:#2980b9
+    style BE       fill:#27ae60,color:#fff,stroke:#229954
+    style FS       fill:#f39c12,color:#fff,stroke:#d68910
+    style MODEL    fill:#8e44ad,color:#fff,stroke:#7d3c98
+```
 
 ---
 

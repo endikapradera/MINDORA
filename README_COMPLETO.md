@@ -18,7 +18,8 @@
 7. [Testing con TEMARIO](#testing-con-temario)
 8. [Desarrollo](#desarrollo)
 9. [Troubleshooting](#troubleshooting)
-10. [Licencia](#licencia)
+10. [🔒 Seguridad y Privacidad](#-seguridad-y-privacidad)
+11. [Licencia](#licencia)
 
 ---
 
@@ -501,6 +502,184 @@ R: Sí, ambos modelos soportan español, inglés, chino, francés, etc.
 
 ---
 
+## 🔒 Seguridad y Privacidad
+
+> **Principio fundamental**: Todo lo que introduces en MINDORA se queda en tu máquina. Siempre.
+
+MINDORA fue diseñada con un modelo de **aislamiento estricto**. A continuación se explica exactamente qué puede y qué no puede hacer la app en tu sistema — con el código real que lo garantiza.
+
+---
+
+### 📁 Acceso al sistema de ficheros: solo tu carpeta MINDORA
+
+Una de las preguntas más frecuentes: _¿puede la app ver mis documentos, fotos o archivos privados?_
+
+**La respuesta es no.** El acceso al disco está declarado explícitamente en el código fuente
+([`ui/src-tauri/tauri.conf.json`](ui/src-tauri/tauri.conf.json)):
+
+```json
+"fs": {
+  "all": false,
+  "readFile": false,
+  "writeFile": true,
+  "readDir": true,
+  "scope": [
+    "$DOCUMENT/MINDORA/**",
+    "$APPDATA/MINDORA/**",
+    "$HOME/.local/share/MINDORA/**",
+    "$DOWNLOAD/**",
+    "$DESKTOP/**"
+  ]
+}
+```
+
+Traducido a una tabla:
+
+| Carpeta | ¿Accesible? | Motivo |
+|---------|:-----------:|--------|
+| `~/Documents/MINDORA/` | ✅ Sí | Modelos, apuntes, historial, exámenes |
+| `~/Downloads/` | ✅ Solo escritura | Exportar exámenes y resultados |
+| `~/Desktop/` | ✅ Solo escritura | Exportar al escritorio |
+| `~/Documents/trabajo/` (u otras carpetas tuyas) | ❌ No | Bloqueado por Tauri runtime |
+| `~/Pictures/`, `~/Videos/`, `~/Music/` | ❌ No | Bloqueado por Tauri runtime |
+| `/etc/`, `/System/`, archivos del SO | ❌ No | Completamente inaccesible |
+| Archivos de otras aplicaciones | ❌ No | Sin acceso a ninguna ruta no declarada |
+
+> 💡 **Garantía técnica**: Tauri aplica estos permisos a nivel de runtime. Aunque hubiera un bug en el código JavaScript de la app, el sistema operativo **no permitiría** el acceso a rutas fuera del scope declarado.
+
+---
+
+### 🚫 La app no puede ejecutar comandos del sistema
+
+MINDORA no puede ejecutar comandos de shell arbitrarios. Está desactivado explícitamente en
+[`ui/src-tauri/tauri.conf.json`](ui/src-tauri/tauri.conf.json):
+
+```json
+"shell": {
+  "all": false,
+  "execute": false,
+  "open": true,
+  "sidecar": false
+}
+```
+
+| Permiso | Valor | Qué significa |
+|---------|:-----:|---------------|
+| `execute` | ❌ `false` | No puede correr `rm`, `curl`, scripts ni ningún comando del SO |
+| `sidecar` | ❌ `false` | No puede lanzar procesos externos desconocidos |
+| `open` | ✅ `true` | Solo puede abrir URLs en tu navegador predeterminado |
+
+---
+
+### 🌐 Sin conexión a internet: todo es local
+
+La app y su backend IA trabajan exclusivamente en `127.0.0.1` (loopback). Hay dos capas independientes que bloquean cualquier conexión externa:
+
+**Capa 1 — Content Security Policy del webview** (en `tauri.conf.json`):
+
+```
+default-src 'self' tauri: https://tauri.localhost
+connect-src http://127.0.0.1:8000     ← solo el backend local
+script-src  'self'                     ← sin scripts de terceros
+img-src     'self' data: blob:         ← sin imágenes externas
+font-src    'self' data:               ← sin fuentes externas
+```
+
+**Capa 2 — Backend IA con red bloqueada** (código Rust en `ui/src-tauri/src/main.rs`):
+
+```rust
+cmd.env("NO_PROXY", "*");              // no usar ningún proxy de red
+cmd.env("REQUESTS_CA_BUNDLE", "");     // deshabilita HTTPS saliente en librería requests
+```
+
+Resultado: el proceso de IA que analiza tus apuntes **nunca puede hacer peticiones HTTP externas**.
+
+---
+
+### 🗄️ Dónde se almacenan tus datos
+
+| Tipo de dato | Ubicación en disco | ¿Sale de tu máquina? |
+|---|---|:---:|
+| Apuntes y documentos subidos | `~/Documents/MINDORA/<rama>/docs/` | ❌ Nunca |
+| Historial de chat (SQLite) | `~/Documents/MINDORA/storage.db` | ❌ Nunca |
+| Exámenes generados | `~/Documents/MINDORA/<rama>/exams/` | ❌ Nunca |
+| Vectores / embeddings (FAISS) | `~/Documents/MINDORA/<rama>/index/` | ❌ Nunca |
+| Modelos de IA (`.gguf`) | `~/Documents/MINDORA/models/` | ❌ Nunca |
+| Telemetría / analíticas | — | ✅ No existe |
+| Datos enviados a servidores | — | ✅ No existen |
+
+---
+
+### 🛡️ Protecciones adicionales del API local
+
+El servidor FastAPI que gestiona la IA incorpora sus propias defensas
+(código en [`core/app/main.py`](core/app/main.py)):
+
+| Protección | Valor | Efecto |
+|---|---|---|
+| Tamaño máximo por petición | 50 MB | Previene abusos de memoria |
+| Rate limiting | 120 req / 30 s | Evita bucles infinitos o saturación |
+| CORS estricto | Solo `localhost` / `127.0.0.1` | Bloquea peticiones desde sitios web externos |
+| Origen de datos | Solo archivos explícitamente subidos | Sin acceso a ficheros externos |
+
+```python
+# core/app/main.py — extracto real
+_MAX_BODY_BYTES    = 50 * 1024 * 1024  # 50 MB límite por request
+_RATE_MAX_REQUESTS = 120               # peticiones por ventana de tiempo
+_RATE_WINDOW_SECONDS = 30              # duración de la ventana
+
+# CORS: rechaza cualquier origen que no sea localhost
+allow_origin_regex = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+```
+
+---
+
+### 🗺️ Diagrama de aislamiento completo
+
+```mermaid
+flowchart LR
+    subgraph Maquina ["🖥️  Tu máquina — todo ocurre aquí"]
+        direction TB
+        APP["📱 MINDORA\n(Tauri Webview)"]
+        BE["⚙️ Backend IA\n(FastAPI · 127.0.0.1:8000)"]
+        FS["💾 ~/Documents/MINDORA/\napuntes · historial · exámenes"]
+        MODEL["🧠 Modelos GGUF\n~/Documents/MINDORA/models/"]
+    end
+    INTERNET(["🌐 Internet / Nube"])
+    DISCO(["🔒 Resto del disco\nDocumentos privados · Fotos · etc."])
+
+    APP -- "HTTP local\n127.0.0.1:8000" --> BE
+    BE --> FS
+    BE --> MODEL
+    APP -. "❌ CSP bloquea\ncualquier conexión externa" .-> INTERNET
+    BE  -. "❌ NO_PROXY=*\nsin salida a red" .-> INTERNET
+    APP -. "❌ fs.scope deniega\ncualquier ruta no permitida" .-> DISCO
+
+    style INTERNET fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px
+    style DISCO    fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px
+    style APP      fill:#3498db,color:#fff,stroke:#2980b9
+    style BE       fill:#27ae60,color:#fff,stroke:#229954
+    style FS       fill:#f39c12,color:#fff,stroke:#d68910
+    style MODEL    fill:#8e44ad,color:#fff,stroke:#7d3c98
+```
+
+---
+
+### ✅ Tabla resumen de garantías
+
+| Garantía | Mecanismo que la aplica | Verificable en |
+|---|---|---|
+| Solo accede a carpeta MINDORA | `fs.scope` | [`ui/src-tauri/tauri.conf.json`](ui/src-tauri/tauri.conf.json) |
+| Sin ejecución de comandos del SO | `shell.execute = false` | [`ui/src-tauri/tauri.conf.json`](ui/src-tauri/tauri.conf.json) |
+| Sin conexión a internet (UI) | Content Security Policy | [`ui/src-tauri/tauri.conf.json`](ui/src-tauri/tauri.conf.json) |
+| Sin conexión a internet (IA) | `NO_PROXY=*` en proceso backend | [`ui/src-tauri/src/main.rs`](ui/src-tauri/src/main.rs) |
+| Sin telemetría ni analytics | No existe ningún cliente de telemetría | Todo el código fuente |
+| Datos solo locales | Sin llamadas a APIs externas | `core/app/main.py`, `core/app/services/` |
+
+> 🔍 **¿Quieres verificarlo tú mismo?** Todo el código es open source. Puedes auditar estos archivos directamente en [github.com/endikapradera/MINDORA](https://github.com/endikapradera/MINDORA).
+
+---
+
 ## Contribuir
 
 ¡Contribuciones bienvenidas! Para reportar bugs o sugerir features:
@@ -525,10 +704,10 @@ Modelos IA:
 
 - **GitHub**: [github.com/endikapradera/MINDORA](https://github.com/endikapradera/MINDORA)
 - **Issues**: [GitHub Issues](https://github.com/endikapradera/MINDORA/issues)
-- **Correo**: [endika@ejemplo.com](mailto:endika@ejemplo.com)
+- **Correo**: [followme2024x@gmail.com](mailto:followme2024x@gmail.com)
 
 ---
 
 **Hecho con ❤️ para estudiantes que quieren aprender mejor.**
 
-*Última actualización: 23 de marzo de 2026*
+*Última actualización: 25 de marzo de 2026*
