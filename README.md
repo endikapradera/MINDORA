@@ -8,6 +8,8 @@ Aplicación de escritorio educativa **offline** (Tauri + React + FastAPI + LLM l
 
 ➡️ Guía completa: [README_COMPLETO.md](README_COMPLETO.md)
 
+➡️ Adaptación oficial Práctica 2 (LangChain + Ollama/LM Studio + Streamlit): [PRACTICA2_README.md](PRACTICA2_README.md)
+
 ## 1) Qué es
 
 MINDORA permite:

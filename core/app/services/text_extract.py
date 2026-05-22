@@ -4,6 +4,7 @@ import io
 import logging
 import os
 import re
+import csv
 from collections import Counter
 from pathlib import Path
 
@@ -35,6 +36,8 @@ def extract_text_from_file(path: Path) -> str:
         return _extract_pptx(path)
     if suffix in {".png", ".jpg", ".jpeg", ".bmp", ".tiff"}:
         return _extract_image(path)
+    if suffix == ".csv":
+        return _extract_csv(path)
     if suffix in {".txt", ".md"}:
         return path.read_text(encoding="utf-8", errors="ignore")
     raise ValueError("Unsupported file type")
@@ -256,3 +259,60 @@ def _extract_image(path: Path) -> str:
         raise ValueError(
             "Tesseract OCR no está instalado en el sistema. Instálalo para procesar imágenes."
         ) from exc
+
+
+def _extract_csv(path: Path) -> str:
+    """Extract CSV as structured text with schema, sample rows and numeric stats."""
+
+    raw = ""
+    for enc in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            raw = path.read_text(encoding=enc, errors="strict")
+            break
+        except Exception:
+            continue
+    if not raw:
+        raw = path.read_text(encoding="utf-8", errors="ignore")
+
+    reader = csv.DictReader(io.StringIO(raw))
+    if not reader.fieldnames:
+        return "[CSV] Archivo vacío o sin cabeceras válidas."
+
+    headers = [h.strip() for h in reader.fieldnames if h and h.strip()]
+    rows = [r for r in reader]
+    total_rows = len(rows)
+
+    sample_lines: list[str] = []
+    for i, row in enumerate(rows[:8], start=1):
+        compact = ", ".join(f"{k}={str(row.get(k, '')).strip()}" for k in headers[:8])
+        sample_lines.append(f"Fila {i}: {compact}")
+
+    numeric_stats: list[str] = []
+    for col in headers:
+        values: list[float] = []
+        for r in rows:
+            token = str(r.get(col, "")).strip().replace(",", ".")
+            if not token:
+                continue
+            try:
+                values.append(float(token))
+            except Exception:
+                continue
+        if len(values) >= 2:
+            avg = sum(values) / len(values)
+            numeric_stats.append(
+                f"- {col}: n={len(values)}, min={min(values):.2f}, max={max(values):.2f}, media={avg:.2f}"
+            )
+
+    stats_block = "\n".join(numeric_stats) if numeric_stats else "- No se detectaron columnas numéricas suficientes."
+    sample_block = "\n".join(sample_lines) if sample_lines else "(sin filas de muestra)"
+
+    return (
+        "[CSV]\n"
+        f"Columnas ({len(headers)}): {', '.join(headers)}\n"
+        f"Total de filas: {total_rows}\n\n"
+        "Estadísticas numéricas:\n"
+        f"{stats_block}\n\n"
+        "Muestra de datos:\n"
+        f"{sample_block}"
+    )

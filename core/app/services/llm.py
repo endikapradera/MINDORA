@@ -91,6 +91,13 @@ def _openai_enabled() -> bool:
     return bool(os.getenv("IA_OPENAI_API_KEY"))
 
 
+def _langchain_enabled() -> bool:
+    value = os.getenv("IA_LANGCHAIN_ENABLED")
+    if value is None:
+        return True
+    return _bool_env("IA_LANGCHAIN_ENABLED")
+
+
 def _openai_base_url() -> str:
     base = os.getenv("IA_OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
     return base.rstrip("/")
@@ -759,6 +766,20 @@ def generate_answer(
     response_style: ResponseStyle = "auto",
     history: list[dict] | None = None,
 ) -> str:
+    if _langchain_enabled():
+        try:
+            from app.services.langchain_orchestrator import generate_answer_langchain
+
+            return generate_answer_langchain(
+                question=question,
+                contexts=contexts,
+                response_style=response_style,
+                history=history,
+            )
+        except Exception as exc:
+            if _bool_env("IA_LANGCHAIN_STRICT", False):
+                raise RuntimeError(f"Fallo en orquestación LangChain: {exc}")
+
     if _should_use_safe_mode():
         return generate_answer_fallback(question, contexts, response_style)
 

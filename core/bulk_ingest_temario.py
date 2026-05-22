@@ -17,7 +17,7 @@ from app.storage.models import Chunk, Document
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEMARIO_ROOT = Path("/Users/endikapraderatouzani/Desktop/MINDORA/TEMARIO ")
-SUPPORTED = {".pdf", ".docx", ".pptx", ".txt", ".md"}
+SUPPORTED = {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv"}
 TARGET_BRANCHES = [
     "A1 - LOGICA",
     "A2 - DIMENSIONES SEGURIDAD",
