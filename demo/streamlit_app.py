@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import os
 import re
 import uuid
 import requests
 import streamlit as st
 
-BASE_URL = st.secrets.get("MINDORA_API_URL", "http://127.0.0.1:8000")
-
 st.set_page_config(page_title="MINDORA · Demo Práctica 2", page_icon="📚", layout="wide")
+
+try:
+    BASE_URL = st.secrets["MINDORA_API_URL"]
+except Exception:
+    BASE_URL = os.getenv("MINDORA_API_URL", "http://127.0.0.1:8000")
 st.title("📚 MINDORA · Demo Práctica 2 (Offline)")
 st.caption("LangChain + Ollama/LM Studio + FastAPI (modo local)")
 
