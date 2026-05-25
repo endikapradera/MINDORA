@@ -8,7 +8,7 @@ class ExamGenerateRequest(BaseModel):
     num_questions: int = Field(default=10, ge=1, le=50)
     difficulty: str = Field(default="media")
     top_k: int = Field(default=6, ge=1, le=20)
-    exam_type: Literal["test_simple", "test_multiple", "desarrollo", "mixto"] = "mixto"
+    exam_type: Literal["test"] = "test"
 
 
 class ExamGenerateResponse(BaseModel):

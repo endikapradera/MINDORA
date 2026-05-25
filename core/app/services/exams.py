@@ -93,17 +93,8 @@ def _retrieve_exam_contexts(branch: str, topic: str, top_k: int) -> list[dict]:
     return merged[: max(top_k * 2, 12)]
 
 
-def _build_type_instructions(exam_type: Literal["test_simple", "test_multiple", "desarrollo", "mixto"]) -> str:
-    if exam_type == "test_simple":
-        return "Todas las preguntas deben ser tipo test de respuesta única con 4 opciones (A-D)."
-    if exam_type == "test_multiple":
-        return "Todas las preguntas deben ser tipo test de respuesta múltiple con 4 opciones (A-D) y al menos 2 correctas cuando aplique."
-    if exam_type == "desarrollo":
-        return "Todas las preguntas deben ser de desarrollo (sin opciones), con respuesta modelo clara y breve."
-    return (
-        "El examen debe ser mixto: combina preguntas tipo test simple, test múltiple y desarrollo. "
-        "Asegura una distribución equilibrada."
-    )
+def _build_type_instructions(exam_type: str = "test") -> str:
+    return "Todas las preguntas deben ser tipo test de respuesta única con exactamente 4 opciones (A, B, C, D). Solo una opción es correcta."
 
 
 def _parse_generated_questions(raw: str) -> list[dict]:
@@ -246,31 +237,10 @@ def _heuristic_questions_from_context(
         alt_2 = sent_at(i + 2)
         alt_3 = sent_at(i + 3)
 
-        if exam_type == "desarrollo":
-            q_type = "desarrollo"
-        elif exam_type == "test_multiple":
-            q_type = "test_multiple"
-        elif exam_type == "test_simple":
-            q_type = "test_simple"
-        else:
-            cycle = ["test_simple", "test_multiple", "desarrollo"]
-            q_type = cycle[i % len(cycle)]
+        q_type = "test_simple"
 
         statement_seed = _strip_leading_connector(base)
-        statement = f"Sobre {topic}, explica o identifica: {statement_seed[:180]}"
-
-        if q_type == "desarrollo":
-            out.append(
-                {
-                    "number": i + 1,
-                    "type": q_type,
-                    "statement": statement,
-                    "options": [],
-                    "answer": base,
-                    "explanation": "Respuesta construida a partir del contexto del temario.",
-                }
-            )
-            continue
+        statement = f"Sobre {topic}, identifica la afirmación correcta: {statement_seed[:180]}"
 
         options = [
             f"A) {alt_1[:120]}",
@@ -278,7 +248,7 @@ def _heuristic_questions_from_context(
             f"C) {alt_2[:120]}",
             f"D) {alt_3[:120]}",
         ]
-        answer = "B,C" if q_type == "test_multiple" else "B"
+        answer = "B"
         out.append(
             {
                 "number": i + 1,
@@ -325,17 +295,17 @@ def _complete_missing_questions(
     existing_statements = "\n".join(f"- {q.get('statement', '')}" for q in current_questions[:40])
     completion_prompt = (
         "Completa el examen sin repetir preguntas ya existentes.\n"
-        "Devuelve SOLO bloques en formato exacto:\n"
+        "Devuelve SOLO bloques en formato exacto (tipo test con 4 opciones A-D, una sola correcta):\n"
         "### Pregunta N\n"
-        "Tipo: test_simple | test_multiple | desarrollo\n"
+        "Tipo: test_simple\n"
         "Enunciado: ...\n"
         "Opciones:\n"
         "A) ...\nB) ...\nC) ...\nD) ...\n"
-        "Respuesta: ...\n"
+        "Respuesta: <solo A, B, C o D>\n"
         "Explicacion: ...\n"
         "Sin texto adicional fuera del formato.\n"
         f"Genera exactamente {missing} preguntas nuevas.\n"
-        f"Tema: {topic}. Dificultad: {difficulty}. Tipo objetivo: {exam_type}.\n"
+        f"Tema: {topic}. Dificultad: {difficulty}.\n"
         f"Preguntas ya existentes (NO repetir):\n{existing_statements}\n\n"
         f"Contexto:\n{context_block}\n"
     )
@@ -349,15 +319,14 @@ def _complete_missing_questions(
     return extra
 
 
-def _render_exam_statement(questions: list[dict], topic: str, difficulty: str, exam_type: str) -> str:
+def _render_exam_statement(questions: list[dict], topic: str, difficulty: str, exam_type: str = "test") -> str:
     lines = [
         f"EXAMEN - {topic}",
         f"Dificultad: {difficulty}",
-        f"Tipo: {exam_type}",
         "",
     ]
     for q in questions:
-        lines.append(f"{q['number']}) [{q['type']}] {q['statement']}")
+        lines.append(f"{q['number']}) {q['statement']}")
         for opt in q.get("options", []):
             lines.append(f"   {opt}")
         lines.append("")
@@ -380,7 +349,7 @@ def generate_exam(
     num_questions: int,
     difficulty: str,
     top_k: int,
-    exam_type: Literal["test_simple", "test_multiple", "desarrollo", "mixto"] = "mixto",
+    exam_type: str = "test",
 ) -> dict:
     if not branch_exists(branch):
         raise FileNotFoundError()
@@ -398,17 +367,16 @@ def generate_exam(
     )
     context_block = _compact_context_texts(context_texts, max_chars=3200)
     full_prompt = (
-        "Eres un profesor universitario experto. Crea preguntas válidas y no repetidas basadas solo en el contexto.\n"
+        "Eres un profesor universitario experto. Crea preguntas de tipo test con 4 opciones (A, B, C, D) y UNA sola respuesta correcta.\n"
+        "Basa las preguntas exclusivamente en el contexto proporcionado.\n"
         "Devuelve el resultado en este formato ESTRICTO por cada pregunta:\n"
         "### Pregunta N\n"
-        "Tipo: test_simple | test_multiple | desarrollo\n"
+        "Tipo: test_simple\n"
         "Enunciado: ...\n"
         "Opciones:\n"
         "A) ...\nB) ...\nC) ...\nD) ...\n"
-        "Respuesta: ...\n"
-        "Explicacion: ...\n"
-        "Para preguntas de desarrollo, deja la sección Opciones vacía.\n"
-        "Para test_multiple, la Respuesta debe incluir varias letras separadas por coma (ej: A,C).\n"
+        "Respuesta: <solo una letra: A, B, C o D>\n"
+        "Explicacion: <breve justificación de por qué esa opción es correcta>\n"
         "No dejes ninguna pregunta sin respuesta.\n"
         "No repitas enunciados ni opciones casi idénticas.\n"
         "No incluyas texto fuera de ese formato.\n\n"
