@@ -139,16 +139,17 @@ def _parse_generated_questions(raw: str) -> list[dict]:
                 statement = line
 
         if statement and answer:
-            questions.append(
-                {
-                    "number": len(questions) + 1,
-                    "type": q_type,
-                    "statement": statement,
-                    "options": options,
-                    "answer": answer,
-                    "explanation": explanation,
-                }
-            )
+            if len(options) == 4 and re.match(r'^[A-D]$', answer):
+                questions.append(
+                    {
+                        "number": len(questions) + 1,
+                        "type": q_type,
+                        "statement": statement,
+                        "options": options,
+                        "answer": answer,
+                        "explanation": explanation,
+                    }
+                )
     return questions
 
 
@@ -178,12 +179,7 @@ def _parse_fallback_questions(raw: str) -> list[dict]:
         if not answer:
             continue
 
-        q_type = "desarrollo"
-        if options:
-            if re.search(r"\b[ABCD]\s*[,y]\s*[ABCD]\b|\b[ABCD]\s*,\s*[ABCD]\b", answer, flags=re.IGNORECASE):
-                q_type = "test_multiple"
-            else:
-                q_type = "test_simple"
+        q_type = "test"
 
         out.append(
             {
@@ -237,7 +233,7 @@ def _heuristic_questions_from_context(
         alt_2 = sent_at(i + 2)
         alt_3 = sent_at(i + 3)
 
-        q_type = "test_simple"
+        q_type = "test"
 
         statement_seed = _strip_leading_connector(base)
         statement = f"Sobre {topic}, identifica la afirmación correcta: {statement_seed[:180]}"
@@ -297,7 +293,7 @@ def _complete_missing_questions(
         "Completa el examen sin repetir preguntas ya existentes.\n"
         "Devuelve SOLO bloques en formato exacto (tipo test con 4 opciones A-D, una sola correcta):\n"
         "### Pregunta N\n"
-        "Tipo: test_simple\n"
+        "Tipo: test\n"
         "Enunciado: ...\n"
         "Opciones:\n"
         "A) ...\nB) ...\nC) ...\nD) ...\n"

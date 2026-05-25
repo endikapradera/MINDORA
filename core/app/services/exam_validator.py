@@ -5,9 +5,6 @@ Para cada pregunta tipo test generada:
   1. Verificar que la respuesta correcta está respaldada por el contexto.
   2. Verificar que cada distractor (opción incorrecta) es realmente falso.
   3. Calcular un score de confianza [0.0–1.0] por pregunta.
-
-Para preguntas de desarrollo:
-  - Calcular confianza por solapamiento léxico con el contexto.
 """
 from __future__ import annotations
 
@@ -158,7 +155,7 @@ def validate_question(
     context_block = "\n\n".join(context_texts[:4])
     ctx_tokens = _tokens(context_block)
 
-    q_type = question.get("type", "desarrollo")
+    q_type = question.get("type", "test")
     statement = question.get("statement", "")
     answer = question.get("answer", "")
     options: list[str] = question.get("options", [])
@@ -166,7 +163,7 @@ def validate_question(
     distractor_issues: list[str] = []
     confidence = 1.0
 
-    if q_type in ("test_simple", "test_multiple"):
+    if q_type == "test":
         correct_set = _correct_letters(answer)
 
         # 1. Check correct answer is grounded
