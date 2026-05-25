@@ -157,6 +157,7 @@ def _dimseg_knowledge_answer(question: str) -> Optional[str]:
 def _fallback_queries(question: str) -> list[str]:
     q = (question or "").strip()
     variants: list[str] = []
+    q_lower = q.lower()
 
     # Remove common pedagogical prefixes
     cleaned = re.sub(
@@ -168,12 +169,31 @@ def _fallback_queries(question: str) -> list[str]:
     if cleaned and cleaned != q:
         variants.append(cleaned)
 
+    broad_summary = bool(
+        re.search(r"(?i)resum|resumen|visión general|vision general|explica", q_lower)
+        and re.search(r"(?i)todo|tod[o0d]?|temario|global|general|completo", q_lower)
+    )
+    if broad_summary:
+        variants.extend(
+            [
+                "resumen general del temario",
+                "conceptos clave del temario",
+                "ideas principales del tema",
+            ]
+        )
+
     # Remove explicit references to file extension and punctuation noise
     no_ext = re.sub(r"(?i)\.pdf\b", "", cleaned or q)
     no_ext = re.sub(r"[\(\)\[\]{};,_]+", " ", no_ext)
     no_ext = re.sub(r"\s+", " ", no_ext).strip()
     if no_ext and no_ext not in variants and no_ext != q:
         variants.append(no_ext)
+
+    typo_light = re.sub(r"\btood\b|\btoddo\b|\btod\b", "todo", no_ext, flags=re.IGNORECASE)
+    typo_light = re.sub(r"\bresumne\b|\bresuemn\b", "resumen", typo_light, flags=re.IGNORECASE)
+    typo_light = re.sub(r"\s+", " ", typo_light).strip()
+    if typo_light and typo_light not in variants and typo_light != q:
+        variants.append(typo_light)
 
     # Keep only meaningful tokens as a last semantic fallback
     tokens = re.findall(r"[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\-]{3,}", no_ext)
@@ -182,7 +202,15 @@ def _fallback_queries(question: str) -> list[str]:
         if compact and compact not in variants and compact != q:
             variants.append(compact)
 
-    return variants[:3]
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in variants:
+        key = item.strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            deduped.append(item.strip())
+
+    return deduped[:6]
 
 
 def _infer_document_id_from_question(branch: str, question: str) -> Optional[int]:
@@ -278,7 +306,11 @@ def ask(payload: AskRequest, branch: str):
     except Exception:
         pass
 
-    effective_top_k = min(20, max(payload.top_k, 10))
+    broad_request = bool(
+        re.search(r"(?i)resum|resumen|visión general|vision general|explica", payload.question)
+        and re.search(r"(?i)todo|temario|global|general|completo", payload.question)
+    )
+    effective_top_k = min(20, max(payload.top_k, 14 if broad_request else 10))
     results = retrieve_chunks(branch, payload.question, effective_top_k, document_id=document_id)
 
     # Fallback retrieval for noisy/over-specified questions (e.g., with typos or file names)

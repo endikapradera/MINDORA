@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Literal
 
 from langchain_core.output_parsers import StrOutputParser
@@ -80,6 +81,80 @@ def _history_text(history: list[dict] | None) -> str:
     return "\n".join(turns)
 
 
+def _question_tokens(text: str) -> set[str]:
+    stopwords = {
+        "para", "como", "este", "esta", "estos", "estas", "desde", "sobre", "entre", "porque",
+        "donde", "cuando", "quien", "cual", "cuales", "explica", "explicame", "explícame", "hazme",
+        "resumen", "resumeme", "resúmeme", "tema", "tema", "todo", "toda", "general", "quiero",
+        "puedes", "podrias", "podrías", "del", "las", "los", "una", "unos", "unas", "qué", "que",
+    }
+    raw = re.findall(r"[a-záéíóúñ0-9]{3,}", (text or "").lower())
+    return {tok for tok in raw if tok not in stopwords}
+
+
+def _split_context_entry(entry: str) -> tuple[str, str]:
+    parts = entry.split("\n", 1)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    return "[FUENTE ?]", entry.strip()
+
+
+def _sentence_score(sentence: str, q_tokens: set[str]) -> float:
+    sentence_tokens = set(re.findall(r"[a-záéíóúñ0-9]{3,}", sentence.lower()))
+    if not sentence_tokens:
+        return 0.0
+    overlap = len(sentence_tokens & q_tokens)
+    density = overlap / max(1, len(sentence_tokens))
+    length_bonus = min(len(sentence) / 220.0, 1.0)
+    return overlap * 2.0 + density + length_bonus
+
+
+def _build_evidence_digest(question: str, contexts: list[str], max_sentences: int = 10) -> str:
+    q_tokens = _question_tokens(question)
+    ranked: list[tuple[float, int, str, str]] = []
+
+    for idx, entry in enumerate(contexts, start=1):
+        source, body = _split_context_entry(entry)
+        body = re.sub(r"\s+", " ", body).strip()
+        sentences = re.split(r"(?<=[\.!?;:])\s+", body)
+        for sentence in sentences:
+            clean = sentence.strip(" -\t\n")
+            if len(clean) < 45:
+                continue
+            score = _sentence_score(clean, q_tokens)
+            if not q_tokens:
+                score += 0.15
+            ranked.append((score, idx, source, clean))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+
+    selected: list[str] = []
+    used_sources: set[str] = set()
+    seen_sentences: set[str] = set()
+    for score, _, source, sentence in ranked:
+        key = sentence.lower()
+        if key in seen_sentences:
+            continue
+        if len(selected) >= max_sentences:
+            break
+        if source in used_sources and len(selected) >= max(4, max_sentences // 2) and score < 2.2:
+            continue
+        seen_sentences.add(key)
+        used_sources.add(source)
+        selected.append(f"- {sentence} ({source})")
+
+    if not selected:
+        fallback: list[str] = []
+        for entry in contexts[:4]:
+            source, body = _split_context_entry(entry)
+            snippet = re.sub(r"\s+", " ", body).strip()[:260]
+            if snippet:
+                fallback.append(f"- {snippet}... ({source})")
+        selected = fallback
+
+    return "\n".join(selected)
+
+
 def generate_answer_langchain(
     question: str,
     contexts: list[str],
@@ -94,6 +169,8 @@ def generate_answer_langchain(
     """
     if not contexts:
         return "No encontré información suficiente en el contexto para responder."
+
+    evidence_digest = _build_evidence_digest(question, contexts)
 
     llm = ChatOpenAI(
         model=_model(),
@@ -120,6 +197,7 @@ def generate_answer_langchain(
             (
                 "human",
                 "ESTILO DE RESPUESTA:\n{style_rules}\n\n"
+                "EVIDENCIA PRIORIZADA:\n{evidence_digest}\n\n"
                 "CONTEXTO FIABLE:\n{context}\n\n"
                 "HISTORIAL (para continuidad):\n{history}\n\n"
                 "PREGUNTA DEL USUARIO:\n{question}\n\n"
@@ -137,6 +215,7 @@ def generate_answer_langchain(
     answer = chain.invoke(
         {
             "style_rules": _style_rules(response_style),
+            "evidence_digest": evidence_digest,
             "context": "\n\n".join(contexts),
             "history": _history_text(history),
             "question": question,
