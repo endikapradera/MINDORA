@@ -63,6 +63,85 @@ type ChatMessage = {
 
 const MINDORA_PUBLIC_LINK = "https://mindora2026.netlify.app/hecho";
 
+type InteractiveExamQuestion = {
+  number: number;
+  statement: string;
+  options: string[];
+  correctAnswer: string;
+  explanation: string;
+};
+
+function normalizeExamLetter(value: string): string {
+  const match = value.toUpperCase().match(/\b([A-D])\b/);
+  return match?.[1] ?? "";
+}
+
+function parseInteractiveExam(
+  examContent: string,
+  answerKeyContent: string
+): InteractiveExamQuestion[] {
+  const lines = examContent.split(/\r?\n/);
+  const questions: Array<{ number: number; statement: string; options: string[] }> = [];
+  let current: { number: number; statement: string; options: string[] } | null = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith("EXAMEN -") || line.startsWith("Dificultad:")) continue;
+
+    const questionMatch = line.match(/^(\d+)\)\s+(.+)$/);
+    if (questionMatch) {
+      if (current) questions.push(current);
+      current = {
+        number: Number(questionMatch[1]),
+        statement: questionMatch[2],
+        options: [],
+      };
+      continue;
+    }
+
+    const optionMatch = line.match(/^([A-D])\)\s+(.+)$/);
+    if (optionMatch && current) {
+      current.options.push(`${optionMatch[1]}) ${optionMatch[2]}`);
+    }
+  }
+
+  if (current) questions.push(current);
+
+  const answers = new Map<number, { correctAnswer: string; explanation: string }>();
+  let lastNumber: number | null = null;
+  for (const rawLine of answerKeyContent.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const answerMatch = line.match(/^(\d+)\)\s*Respuesta:\s*(.+)$/i);
+    if (answerMatch) {
+      lastNumber = Number(answerMatch[1]);
+      answers.set(lastNumber, {
+        correctAnswer: normalizeExamLetter(answerMatch[2]),
+        explanation: answers.get(lastNumber)?.explanation ?? "",
+      });
+      continue;
+    }
+
+    const explanationMatch = line.match(/^Justificaci[oó]n:\s*(.+)$/i);
+    if (explanationMatch && lastNumber !== null) {
+      answers.set(lastNumber, {
+        correctAnswer: answers.get(lastNumber)?.correctAnswer ?? "",
+        explanation: explanationMatch[1],
+      });
+    }
+  }
+
+  return questions
+    .map((question) => ({
+      ...question,
+      correctAnswer: answers.get(question.number)?.correctAnswer ?? "",
+      explanation: answers.get(question.number)?.explanation ?? "",
+    }))
+    .filter((question) => question.options.length === 4 && question.correctAnswer.length > 0);
+}
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -102,7 +181,7 @@ export default function App() {
   const [examTopics, setExamTopics] = useState<ExamTopicItem[]>([]);
   const [examTopicsLoading, setExamTopicsLoading] = useState(false);
   const [examDifficulty, setExamDifficulty] = useState("media");
-  const [examType, setExamType] = useState<ExamType>("mixto");
+  const [examType] = useState<ExamType>("test");
   const [examCount, setExamCount] = useState(10);
   const [retrievalDepth, setRetrievalDepth] = useState(6);
   const [chatMode, setChatMode] = useState<ResponseStyle>("auto");
@@ -115,6 +194,10 @@ export default function App() {
   const [examWarnings, setExamWarnings] = useState<string[]>([]);
   const [examContent, setExamContent] = useState("");
   const [answerKeyContent, setAnswerKeyContent] = useState("");
+  const [interactiveExamQuestions, setInteractiveExamQuestions] = useState<InteractiveExamQuestion[]>([]);
+  const [interactiveExamIndex, setInteractiveExamIndex] = useState(0);
+  const [interactiveExamAnswers, setInteractiveExamAnswers] = useState<Record<number, string>>({});
+  const [interactiveExamRevealed, setInteractiveExamRevealed] = useState<Record<number, boolean>>({});
   const [examSolveFile, setExamSolveFile] = useState<File | null>(null);
   const [solvedExamContent, setSolvedExamContent] = useState("");
   const [solvedExamConfidence, setSolvedExamConfidence] = useState<number | null>(null);
@@ -899,12 +982,17 @@ export default function App() {
     }
     try {
       const result = await generateExam(selectedBranch, examTopic, examCount, examDifficulty, examTopK, examType);
+      const parsedQuestions = parseInteractiveExam(result.exam_content, result.answer_key_content);
       setExamId(result.exam_id);
       setExamContent(result.exam_content);
       setAnswerKeyContent(result.answer_key_content);
+      setInteractiveExamQuestions(parsedQuestions);
+      setInteractiveExamIndex(0);
+      setInteractiveExamAnswers({});
+      setInteractiveExamRevealed({});
       setExamAvgConfidence(result.avg_confidence ?? null);
       setExamWarnings(result.distractor_warnings ?? []);
-      showToast("✅ Examen generado correctamente");
+      showToast(parsedQuestions.length > 0 ? "✅ Examen A-B-C-D generado correctamente" : "✅ Examen generado correctamente");
     } catch (err) {
       const detail = getErrorMessage(err, "Error al generar el examen. Asegúrate de tener documentos en la rama.");
       setExamTopicError(detail);
@@ -1068,14 +1156,14 @@ export default function App() {
 
               <h3>6) Generador de exámenes académico</h3>
               <p>
-                Permite crear exámenes mixtos o por tipo (test simple, múltiple, desarrollo), con dificultad y número
-                de preguntas configurables. También exporta examen y solucionario por separado en PDF y DOCX.
+                Permite crear exámenes tipo test A-B-C-D con una sola respuesta correcta, dificultad configurable y
+                exportación separada de examen y solucionario en PDF y DOCX.
               </p>
 
-              <h3>7) Simulacro real con tiempo</h3>
+              <h3>7) Resolución en directo dentro de la app</h3>
               <p>
-                Ejecuta simulacros cronometrados con entrega manual o automática al agotarse el tiempo. Corrige test de
-                forma exacta y desarrollo con evaluación asistida por IA, calculando nota final y temas débiles.
+                Cada pregunta se responde en pantalla y la app revela al instante la opción correcta, la explicación y
+                la puntuación acumulada. Está pensada para demostrar la práctica directamente desde la app de macOS.
               </p>
 
               <h3>8) Historial y analítica de progreso</h3>
@@ -1092,8 +1180,8 @@ export default function App() {
 
               <h3>10) Flujo recomendado de uso</h3>
               <p>
-                1) Crea rama → 2) Sube apuntes → 3) Pregunta y genera pack → 4) Crea examen → 5) Haz simulacro
-                → 6) Revisa temas débiles → 7) Repite hasta dominar el temario.
+                1) Crea rama → 2) Sube apuntes → 3) Pregunta y genera pack → 4) Crea examen → 5) Resuélvelo en directo
+                → 6) Revisa errores y explicaciones → 7) Repite hasta dominar el temario.
               </p>
             </div>
           </div>
@@ -1602,6 +1690,9 @@ export default function App() {
           <details className="menu-panel" open>
             <summary>⚙️ Configuración del examen</summary>
             <div className="menu-panel-body">
+              <div className="result" style={{ marginBottom: 12 }}>
+                <strong>Formato fijo de práctica:</strong> test A-B-C-D, una sola respuesta correcta y corrección inmediata en la app de escritorio.
+              </div>
               <div className="form-grid-4">
                 <input
                   type="number"
@@ -1619,16 +1710,6 @@ export default function App() {
                   <option value="baja">Dificultad baja</option>
                   <option value="media">Dificultad media</option>
                   <option value="alta">Dificultad alta</option>
-                </select>
-                <select
-                  value={examType}
-                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setExamType(e.target.value as ExamType)}
-                  title="Tipo de examen"
-                >
-                  <option value="mixto">Tipo mixto</option>
-                  <option value="test_simple">Test simple</option>
-                  <option value="test_multiple">Test múltiple</option>
-                  <option value="desarrollo">Desarrollo</option>
                 </select>
                 <select
                   value={examQualityMode}
@@ -1664,20 +1745,8 @@ export default function App() {
           </details>
 
           <details className="menu-panel">
-            <summary>⏱️ Simulacro y resolución</summary>
+            <summary>🧩 Resolución y exportación</summary>
             <div className="menu-panel-body">
-              <div className="row action-row">
-                <input
-                  type="number"
-                  min={5}
-                  max={240}
-                  value={simulationDuration}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSimulationDuration(Number(e.target.value))}
-                />
-                <button onClick={handleStartSimulation} disabled={!canUseBranch || !examId}>
-                  Iniciar simulacro real
-                </button>
-              </div>
               <div className="row action-row">
                 <input
                   type="file"
@@ -1891,79 +1960,109 @@ export default function App() {
         </div>
       )}
 
-      {isExamenes && simulationId && simulationQuestions.length > 0 && (
+      {isExamenes && interactiveExamQuestions.length > 0 && (() => {
+        const currentQuestion = interactiveExamQuestions[Math.min(interactiveExamIndex, interactiveExamQuestions.length - 1)];
+        const currentAnswer = interactiveExamAnswers[currentQuestion.number] ?? "";
+        const isRevealed = Boolean(interactiveExamRevealed[currentQuestion.number]);
+        const answeredCount = Object.keys(interactiveExamRevealed).length;
+        const correctCount = interactiveExamQuestions.reduce((acc, question) => {
+          const answer = interactiveExamAnswers[question.number] ?? "";
+          return acc + (interactiveExamRevealed[question.number] && answer === question.correctAnswer ? 1 : 0);
+        }, 0);
+
+        return (
         <div className="card">
-          <h3>Simulacro real</h3>
+          <h3>Resolución en directo</h3>
           <p>
-            Tiempo restante: <strong>{formatSeconds(simulationTimeLeft)}</strong>
+            Pregunta <strong>{currentQuestion.number}</strong> de <strong>{interactiveExamQuestions.length}</strong> · Respondidas: <strong>{answeredCount}</strong> · Aciertos: <strong>{correctCount}</strong>
           </p>
-          {simulationTimeLeft === 0 && <p className="warning-text">Tiempo agotado. Entrega automática en curso…</p>}
-          {simulationQuestions.map((q) => (
-            <div key={q.number} className="result" style={{ marginBottom: 10 }}>
-              <strong>
-                {q.number}) [{q.type}] {q.statement}
-              </strong>
-              {q.options.length > 0 && (
-                <ul>
-                  {q.options.map((o, i) => (
-                    <li key={`${q.number}-opt-${i}`}>{o}</li>
-                  ))}
-                </ul>
-              )}
-              <input
-                placeholder="Tu respuesta"
-                value={simulationAnswers[q.number] ?? ""}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => handleSimulationAnswerChange(q.number, e.target.value)}
-              />
-            </div>
-          ))}
-          <button onClick={() => handleSubmitSimulation(false)} disabled={isAutoSubmittingSimulation}>
-            Entregar simulacro
-          </button>
-        </div>
-      )}
-
-      {isExamenes && simulationResult && (
-        <div className="card">
-          <h3>Resultado simulacro</h3>
-          <div className="result">
-            <p>
-              Estado: <strong>{simulationResult.status}</strong>
-            </p>
-            <p>
-              Aciertos: {simulationResult.correct_answers}/{simulationResult.total_questions}
-            </p>
-            <p>
-              Nota: <strong>{simulationResult.score_percent}%</strong>
-            </p>
-            {simulationResult.weak_topics.length > 0 && (
-              <>
-                <strong>Temas donde has pinchado:</strong>
-                <ul>
-                  {simulationResult.weak_topics.map((w, i) => (
-                    <li key={`weak-${i}`}>{w}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <strong>Análisis de errores:</strong>
-            <ul>
-              {simulationResult.results.map((r) => (
-                <li key={`res-${r.number}`}>
-                  {r.number}) {r.correct ? "✅" : "❌"} {r.feedback}
-                </li>
-              ))}
-            </ul>
+          <div className="quiz-progress-track">
+            <div
+              className="quiz-progress-fill"
+              style={{ width: `${(answeredCount / interactiveExamQuestions.length) * 100}%` }}
+            />
           </div>
-        </div>
-      )}
+          <div className="result" style={{ marginBottom: 14 }}>
+            <strong>{currentQuestion.number}) {currentQuestion.statement}</strong>
+          </div>
+          <div className="quiz-options-grid">
+            {currentQuestion.options.map((option, idx) => {
+              const letter = String.fromCharCode(65 + idx);
+              const isCorrect = isRevealed && letter === currentQuestion.correctAnswer;
+              const isWrongSelection = isRevealed && currentAnswer === letter && currentAnswer !== currentQuestion.correctAnswer;
+              const buttonClass = isCorrect
+                ? "quiz-option quiz-option-correct"
+                : isWrongSelection
+                  ? "quiz-option quiz-option-wrong"
+                  : currentAnswer === letter
+                    ? "quiz-option quiz-option-selected"
+                    : "quiz-option";
 
-      {isExamenes && answerKeyContent && (
-        <div className="card">
-          <h3>Solucionario</h3>
-          <div className="result">{answerKeyContent}</div>
+              return (
+                <button
+                  key={`${currentQuestion.number}-option-${letter}`}
+                  type="button"
+                  className={buttonClass}
+                  disabled={isRevealed}
+                  onClick={() => {
+                    setInteractiveExamAnswers((prev) => ({ ...prev, [currentQuestion.number]: letter }));
+                    setInteractiveExamRevealed((prev) => ({ ...prev, [currentQuestion.number]: true }));
+                  }}
+                >
+                  {option}
+                </button>
+              );
+            })}
+          </div>
+
+          {isRevealed && (
+            <div className="result" style={{ marginTop: 14 }}>
+              <strong>{currentAnswer === currentQuestion.correctAnswer ? "✅ Correcto" : `❌ Incorrecto. La respuesta buena es ${currentQuestion.correctAnswer}`}</strong>
+              {currentQuestion.explanation && (
+                <>
+                  <br />
+                  <span>{currentQuestion.explanation}</span>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="row action-row" style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              onClick={() => setInteractiveExamIndex((prev) => Math.max(0, prev - 1))}
+              disabled={interactiveExamIndex === 0}
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() => setInteractiveExamIndex((prev) => Math.min(interactiveExamQuestions.length - 1, prev + 1))}
+              disabled={interactiveExamIndex >= interactiveExamQuestions.length - 1}
+            >
+              Siguiente
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setInteractiveExamIndex(0);
+                setInteractiveExamAnswers({});
+                setInteractiveExamRevealed({});
+              }}
+            >
+              Reiniciar intento
+            </button>
+          </div>
+
+          {answeredCount === interactiveExamQuestions.length && (
+            <div className="result" style={{ marginTop: 14 }}>
+              <strong>Resultado final:</strong> {correctCount}/{interactiveExamQuestions.length} ({Math.round((correctCount / interactiveExamQuestions.length) * 100)}%)
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {isExamenes && solvedExamContent && (
         <div className="card">

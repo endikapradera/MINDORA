@@ -80,7 +80,7 @@ export type ExamTopicsResponse = {
   topics: ExamTopicItem[];
 };
 
-export type ExamType = "test_simple" | "test_multiple" | "desarrollo" | "mixto";
+export type ExamType = "test";
 
 export type ExportKind = "exam" | "answer_key";
 

@@ -23,7 +23,8 @@ Este documento describe cómo ejecutar y presentar MINDORA para cumplir la prác
 - Integración en endpoint `ask`.
 
 ### Requisito: interfaz
-- Demo Streamlit en `demo/streamlit_app.py`.
+- App desktop local basada en Tauri + React en `ui/`.
+- La resolución del examen se hace en directo dentro de la propia app macOS.
 
 ---
 
@@ -40,10 +41,17 @@ cd MINDORA
 python3 core/run_server.py
 ```
 
-### Arranque Streamlit
+### Arranque app desktop (desarrollo)
+```bash
+cd MINDORA/ui
+npm install
+npm run tauri dev
+```
+
+### Build desktop macOS
 ```bash
 cd MINDORA
-streamlit run demo/streamlit_app.py
+./build.sh
 ```
 
 ---
@@ -106,7 +114,7 @@ Se usan estilos de respuesta diferenciados (`auto`, `corta`, `detallada`, `pasos
 
 - [ ] Repositorio actualizado con instrucciones claras.
 - [ ] `requirements.txt` completo.
-- [ ] Demo Streamlit funcional.
+- [ ] App desktop funcional desde GitHub.
 - [ ] 3 escenarios documentados con capturas.
 - [ ] Memoria técnica 3-5 páginas (arquitectura, decisiones, prompts, mejoras).
 - [ ] ZIP final validado en limpio.

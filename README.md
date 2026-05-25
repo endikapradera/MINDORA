@@ -8,7 +8,7 @@ Aplicación de escritorio educativa **offline** (Tauri + React + FastAPI + LLM l
 
 ➡️ Guía completa: [README_COMPLETO.md](README_COMPLETO.md)
 
-➡️ Adaptación oficial Práctica 2 (LangChain + Ollama/LM Studio + Streamlit): [PRACTICA2_README.md](PRACTICA2_README.md)
+➡️ Adaptación oficial Práctica 2 (LangChain + Ollama/LM Studio + app desktop macOS): [PRACTICA2_README.md](PRACTICA2_README.md)
 
 ## 1) Qué es
 
@@ -108,10 +108,20 @@ mkdir -p ~/.local/share/MINDORA/models
 Copia ambos archivos a la carpeta de modelos y reinicia MINDORA.
 
 3. Ejecutar en dev
-   - Terminal 1: backend (FastAPI/Uvicorn)
+   - Terminal 1: backend (`python3 core/run_server.py` desde la raíz)
    - Terminal 2: `npm run dev` en `ui`
 
 > Si se usa empaquetado desktop, Tauri lanza el backend sidecar automáticamente.
+
+## 6) Ruta recomendada desde GitHub
+
+Para usar MINDORA tal y como queda la práctica:
+
+1. Clona el repositorio.
+2. Instala dependencias del backend en [core/requirements.txt](core/requirements.txt).
+3. Instala dependencias del frontend en [ui/package.json](ui/package.json).
+4. Ejecuta la app desktop con `npm run tauri dev` dentro de [ui](ui).
+5. Para distribuir la app de macOS, ejecuta [build.sh](build.sh) y usa el `.dmg` generado.
 
 ---
 
