@@ -879,7 +879,7 @@ body.light-mode textarea.input-error {
 
 .study-chat-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -958,6 +958,7 @@ body.light-mode textarea.input-error {
 .session-item {
   display: flex;
   align-items: stretch;
+  min-width: 0;
   gap: 4px;
   border-radius: 8px;
   overflow: hidden;
@@ -967,6 +968,7 @@ body.light-mode textarea.input-error {
 
 .session-load-btn {
   flex: 1;
+  min-width: 0;
   background: #111b2d;
   border: none;
   border-radius: 0;
@@ -986,7 +988,7 @@ body.light-mode textarea.input-error {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 140px;
+  max-width: 100%;
   display: block;
 }
 .session-meta {
@@ -994,14 +996,22 @@ body.light-mode textarea.input-error {
   color: #64748b;
 }
 
+.session-actions {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
 .session-delete-btn {
   background: transparent;
   border: none;
   border-left: 1px solid #2a3c57;
   border-radius: 0;
-  padding: 0 8px;
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.76rem;
   color: #ef4444;
   min-height: unset;
 }
@@ -1013,9 +1023,11 @@ body.light-mode textarea.input-error {
   border: none;
   border-left: 1px solid #2a3c57;
   border-radius: 0;
-  padding: 0 8px;
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   color: #93c5fd;
   min-height: unset;
 }
@@ -1275,8 +1287,41 @@ body.light-mode .menu-panel summary {
     grid-template-columns: 1fr;
   }
 
+  .study-history-panel,
+  .study-chat-main {
+    min-width: 0;
+  }
+
+  .session-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .session-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 28px);
+  }
+
+  .session-load-btn {
+    padding: 8px;
+  }
+
+  .study-chat-header-controls {
+    width: 100%;
+  }
+
+  .study-chat-header-controls select {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
   .study-chat-thread {
     min-height: 260px;
+  }
+
+  .chat-composer {
+    grid-template-columns: 1fr 40px;
   }
 }
 

@@ -1431,27 +1431,29 @@ export default function App() {
                               })}
                             </span>
                           </button>
-                          <button
-                            className="session-pin-btn"
-                            title={s.pinned ? "Desfijar" : "Fijar"}
-                            onClick={() => void handleTogglePinSession(s.session_id, s.pinned)}
-                          >
-                            {s.pinned ? "📍" : "📌"}
-                          </button>
-                          <button
-                            className="session-rename-btn"
-                            title="Renombrar sesión"
-                            onClick={() => void handleRenameSession(s.session_id, s.title)}
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            className="session-delete-btn"
-                            title="Eliminar sesión"
-                            onClick={() => void handleDeleteSession(s.session_id)}
-                          >
-                            🗑
-                          </button>
+                          <div className="session-actions">
+                            <button
+                              className="session-pin-btn"
+                              title={s.pinned ? "Desfijar" : "Fijar"}
+                              onClick={() => void handleTogglePinSession(s.session_id, s.pinned)}
+                            >
+                              {s.pinned ? "📍" : "📌"}
+                            </button>
+                            <button
+                              className="session-rename-btn"
+                              title="Renombrar sesión"
+                              onClick={() => void handleRenameSession(s.session_id, s.title)}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              className="session-delete-btn"
+                              title="Eliminar sesión"
+                              onClick={() => void handleDeleteSession(s.session_id)}
+                            >
+                              🗑
+                            </button>
+                          </div>
                         </li>
                       ))
                     )}

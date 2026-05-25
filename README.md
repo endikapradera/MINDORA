@@ -4,22 +4,22 @@
    <img src="logo-app.png" alt="MINDORA" width="180" />
 </p>
 
-Aplicación de escritorio educativa **offline** (Tauri + React + FastAPI + LLM local).
+MINDORA es una aplicación de escritorio educativa **offline** pensada para estudiar temarios locales con IA, sin depender de servicios en la nube. El proyecto combina una interfaz desktop moderna con un backend local, RAG sobre documentos y modelos GGUF ejecutados en la propia máquina.
 
-➡️ Guía completa: [README_COMPLETO.md](README_COMPLETO.md)
+➡️ Guía ampliada: [README_COMPLETO.md](README_COMPLETO.md)
 
-➡️ Adaptación oficial Práctica 2 (LangChain + Ollama/LM Studio + app desktop macOS): [PRACTICA2_README.md](PRACTICA2_README.md)
+➡️ Documento específico de la práctica: [PRACTICA2_README.md](PRACTICA2_README.md)
 
-## 1) Qué es
+## 1) Qué hace MINDORA
 
 MINDORA permite:
-- crear ramas de estudio por asignatura,
-- ingerir apuntes (PDF/DOCX/PPTX/TXT/MD e imagen con OCR),
-- chatear con RAG y memoria local,
-- generar/corregir exámenes y simulacros,
-- funcionar sin nube para contenido sensible.
-
----
+- crear ramas de estudio por asignatura o bloque temático,
+- ingerir apuntes en PDF, DOCX, PPTX, TXT, MD, CSV e imagen con OCR,
+- consultar el material mediante chat con recuperación contextual,
+- generar packs de estudio y exámenes,
+- resolver exámenes tipo test directamente en la app,
+- guardar historial de conversaciones y progreso,
+- trabajar completamente en local con datos sensibles.
 
 ## 2) Arquitectura técnica
 
@@ -29,7 +29,7 @@ MINDORA permite:
 - **LLM local**: `llama-cpp-python` (GGUF)
 - **Persistencia**: SQLite + archivos por rama/sesión
 
-Estructura principal:
+Estructura principal del repositorio:
 
 - `core/app/main.py`: API y middlewares (CORS, límites)
 - `core/app/api/routes/*`: endpoints REST
@@ -38,11 +38,9 @@ Estructura principal:
 - `ui/src/App.tsx`: UI principal
 - `ui/src/api.ts`: cliente HTTP
 - `ui/src-tauri/src/main.rs`: arranque app y sidecar backend
-- `build.sh`: build local multiplataforma (según host)
+- `build.sh`: build de distribución para la app desktop
 
----
-
-## 3) Requisitos
+## 3) Requisitos previos
 
 ### Comunes
 - Python 3.9+
@@ -52,39 +50,53 @@ Estructura principal:
 ### OCR
 - Tesseract instalado en sistema
 
-### Modelo LLM
-- Archivo GGUF, recomendados:
-   - `qwen2.5-7b-instruct` (principal)
-   - `devstral` (código, opcional)
+### Modelo LLM local
+- Archivo GGUF en la carpeta de modelos.
+- Recomendados:
+   - `qwen2.5-7b-instruct` o equivalente Qwen 2.5 7B (principal)
+   - `devstral` (modo código, opcional)
 
 Ubicación del modelo por OS:
 - macOS: `~/Documents/MINDORA/models/`
 - Windows: `%APPDATA%/MINDORA/models/`
 - Linux: `~/.local/share/MINDORA/models/`
 
----
+## 4) Instalación desde GitHub
 
-## 4) Instalación para desarrollo
+### Opción recomendada: uso local en desarrollo
 
-Desde la raíz del repo:
+Desde la raíz del repositorio:
 
-1. Backend
-   - `cd core`
-   - `python3 -m pip install -r requirements.txt`
-
-2. Frontend
-   - `cd ../ui`
-   - `npm install`
-
-## 5) Instalación de modelos de IA
-
-Los modelos se descargan automáticamente la primera vez que MINDORA los necesita, o puedes descargarlos manualmente:
-
-### Descarga manual (recomendado)
+1. Clonar el proyecto
 
 ```bash
-# Crea la carpeta de modelos según tu OS:
+git clone https://github.com/endikapradera/MINDORA.git
+cd MINDORA
+```
 
+2. Instalar dependencias del backend
+
+```bash
+cd core
+python3 -m pip install -r requirements.txt
+cd ..
+```
+
+3. Instalar dependencias del frontend
+
+```bash
+cd ui
+npm install
+cd ..
+```
+
+## 5) Instalación de modelos
+
+La forma más fiable es descargar los modelos manualmente y copiarlos a la carpeta de modelos.
+
+### Carpeta de modelos
+
+```bash
 # macOS
 mkdir -p ~/Documents/MINDORA/models
 
@@ -95,7 +107,7 @@ New-Item -ItemType Directory -Force -Path "$env:APPDATA\MINDORA\models"
 mkdir -p ~/.local/share/MINDORA/models
 ```
 
-### Modelos necesarios:
+### Modelos recomendados
 
 1. **Qwen 2.5 7B Instruct** (educación)
    - Descarga: https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF
@@ -107,25 +119,51 @@ mkdir -p ~/.local/share/MINDORA/models
 
 Copia ambos archivos a la carpeta de modelos y reinicia MINDORA.
 
-3. Ejecutar en dev
-   - Terminal 1: backend (`python3 core/run_server.py` desde la raíz)
-   - Terminal 2: `npm run dev` en `ui`
+## 6) Ejecución
+
+### Backend local
+
+```bash
+cd core
+python3 run_server.py
+```
+
+### App desktop en desarrollo
+
+```bash
+cd ui
+npm run tauri dev
+```
 
 > Si se usa empaquetado desktop, Tauri lanza el backend sidecar automáticamente.
 
-## 6) Ruta recomendada desde GitHub
+## 7) Build de distribución
 
-Para usar MINDORA tal y como queda la práctica:
+Para generar la versión instalable:
 
-1. Clona el repositorio.
-2. Instala dependencias del backend en [core/requirements.txt](core/requirements.txt).
-3. Instala dependencias del frontend en [ui/package.json](ui/package.json).
-4. Ejecuta la app desktop con `npm run tauri dev` dentro de [ui](ui).
-5. Para distribuir la app de macOS, ejecuta [build.sh](build.sh) y usa el `.dmg` generado.
+```bash
+./build.sh
+```
 
----
+Salida esperada por plataforma:
+- macOS: `.dmg`
+- Windows: instalador `.exe`
+- Linux: `.AppImage` y `.deb`
 
-## 5) Seguridad aplicada
+En macOS, el instalador se genera en:
+
+- [ui/src-tauri/target/release/bundle/dmg/MINDORA_1.0.0_aarch64.dmg](ui/src-tauri/target/release/bundle/dmg/MINDORA_1.0.0_aarch64.dmg)
+
+
+## 8) Experiencia de uso actual
+
+- Chat con recuperación contextual y memoria por sesión.
+- Historial de conversaciones con fijado, renombrado y borrado.
+- Packs de estudio automáticos.
+- Exámenes generados **solo en formato tipo test A-B-C-D**.
+- Resolución inmediata del test dentro de la propia interfaz.
+
+## 9) Seguridad aplicada
 
 MINDORA aplica seguridad en capas. Lo que sigue no es solo documentación: es el código real que la garantiza.
 
@@ -235,7 +273,7 @@ flowchart LR
 
 ---
 
-## 6) Funciones implementadas recientes
+## 10) Funciones implementadas recientes
 
 - Soporte de build Linux (`pyinstaller_linux.spec`, workflow Linux)
 - Rutas de datos y modelos cross-platform (macOS/Windows/Linux)
@@ -249,10 +287,11 @@ flowchart LR
 - Guardado de conversación a `.txt`
 - Deduplicación de headers/footers repetidos en PDF
 - Guardrail de baja evidencia en `ask`: responde “no lo sé con certeza”
+- Evidencia extractiva previa para mejorar la calidad de respuesta
+- Búsqueda reforzada para preguntas globales como “resúmeme todo”
 
----
 
-## 7) Testing y validación
+## 11) Testing y validación
 
 ### Backend
 - `cd core`
@@ -269,7 +308,7 @@ Estado actual: build OK.
 
 ---
 
-## 8) Build instalable
+## 12) Build instalable
 
 ### Build local (host actual)
 - `./build.sh`
@@ -285,7 +324,7 @@ Genera según plataforma:
 
 ---
 
-## 9) Release checklist
+## 13) Release checklist
 
 1. Tests backend OK
 2. Typecheck + build frontend OK
@@ -295,15 +334,14 @@ Genera según plataforma:
 
 ---
 
-## 10) Troubleshooting rápido
+## 14) Troubleshooting rápido
 
 - **No encuentra modelo GGUF**: revisar ruta por SO en sección 3
 - **OCR no funciona**: instalar Tesseract y reiniciar app
 - **Build falla en Linux**: instalar dependencias del workflow localmente (webkit2gtk/gtk/openblas)
-- **Respuesta pobre**: aumentar material ingerido o hacer pregunta más específica
+- **Respuesta pobre**: subir más material, seleccionar el documento concreto o usar búsqueda profunda/máxima
 
----
 
-## 11) Licencia
+## 15) Licencia
 
 Ver `LICENSE`.
