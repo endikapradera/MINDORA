@@ -278,20 +278,36 @@ def ask(payload: AskRequest, branch: str):
     except Exception:
         pass
 
-    results = retrieve_chunks(branch, payload.question, payload.top_k, document_id=document_id)
+    effective_top_k = min(20, max(payload.top_k, 10))
+    results = retrieve_chunks(branch, payload.question, effective_top_k, document_id=document_id)
 
-    # Fallback retrieval for noisy/over-specified questions (e.g., with file names)
-    if not results:
+    # Fallback retrieval for noisy/over-specified questions (e.g., with typos or file names)
+    weak_evidence = False
+    if results:
+        best = float(results[0].get("score", 0.0))
+        weak_evidence = best < 0.34
+
+    if not results or weak_evidence:
+        merged: list[dict] = list(results)
+        seen_chunk_ids = {int(r.get("chunk_id", -1)) for r in merged}
         for alt_query in _fallback_queries(payload.question):
             alt_results = retrieve_chunks(
                 branch,
                 alt_query,
-                min(12, max(payload.top_k + 3, 8)),
+                min(20, max(effective_top_k + 4, 12)),
                 document_id=document_id,
             )
-            if alt_results:
-                results = alt_results
-                break
+            if not alt_results:
+                continue
+            for item in alt_results:
+                cid = int(item.get("chunk_id", -1))
+                if cid in seen_chunk_ids:
+                    continue
+                seen_chunk_ids.add(cid)
+                merged.append(item)
+        if merged:
+            merged.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+            results = merged[:effective_top_k]
 
     contexts = []
     for i, r in enumerate(results, start=1):

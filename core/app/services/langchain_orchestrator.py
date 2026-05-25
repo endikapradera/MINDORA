@@ -99,8 +99,8 @@ def generate_answer_langchain(
         model=_model(),
         base_url=_base_url(),
         api_key=_api_key(),
-        temperature=float(os.getenv("IA_LOCAL_LLM_TEMPERATURE", "0.15")),
-        max_tokens=int(os.getenv("IA_LOCAL_LLM_MAX_TOKENS", "700")),
+        temperature=float(os.getenv("IA_LOCAL_LLM_TEMPERATURE", "0.05")),
+        max_tokens=int(os.getenv("IA_LOCAL_LLM_MAX_TOKENS", "850")),
     )
 
     prompt = ChatPromptTemplate.from_messages(
@@ -126,8 +126,9 @@ def generate_answer_langchain(
                 "Instrucciones finales:\n"
                 "- Responde basándote únicamente en el contexto.\n"
                 "- Si necesitas aclarar algo del contexto, hazlo.\n"
-                "- Estructura con claridad: párrafos, puntos clave, conclusión.\n"
-                "- Omite rodeos innecesarios."
+                "- Estructura con claridad: resumen breve, puntos clave y cierre.\n"
+                "- Cita al final 2-4 referencias de evidencia usando formato [FUENTE n].\n"
+                "- Omite rodeos innecesarios y evita repetir frases."
             ),
         ]
     )

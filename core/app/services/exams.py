@@ -110,7 +110,7 @@ def _parse_generated_questions(raw: str) -> list[dict]:
         block = raw[start:end].strip()
         lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
 
-        q_type = "desarrollo"
+        q_type = "test"
         statement = ""
         options: list[str] = []
         answer = ""
@@ -143,7 +143,7 @@ def _parse_generated_questions(raw: str) -> list[dict]:
                 questions.append(
                     {
                         "number": len(questions) + 1,
-                        "type": q_type,
+                        "type": "test",
                         "statement": statement,
                         "options": options,
                         "answer": answer,
@@ -367,7 +367,7 @@ def generate_exam(
         "Basa las preguntas exclusivamente en el contexto proporcionado.\n"
         "Devuelve el resultado en este formato ESTRICTO por cada pregunta:\n"
         "### Pregunta N\n"
-        "Tipo: test_simple\n"
+        "Tipo: test\n"
         "Enunciado: ...\n"
         "Opciones:\n"
         "A) ...\nB) ...\nC) ...\nD) ...\n"
@@ -392,7 +392,7 @@ def generate_exam(
                 "Reescribe el texto siguiente al formato exacto requerido. No inventes contenido nuevo.\n"
                 "Formato exacto por bloque:\n"
                 "### Pregunta N\n"
-                "Tipo: test_simple | test_multiple | desarrollo\n"
+                "Tipo: test\n"
                 "Enunciado: ...\n"
                 "Opciones:\n"
                 "A) ...\nB) ...\nC) ...\nD) ...\n"
@@ -526,7 +526,7 @@ def export_exam_docx(branch: str, exam_id: str, kind: Literal["exam", "answer_ke
     else:
         doc.add_heading(f"Examen: {exam['topic']}", level=1)
         doc.add_paragraph(f"Dificultad: {exam['difficulty']}")
-        doc.add_paragraph(f"Tipo: {exam.get('exam_type', 'mixto')}")
+        doc.add_paragraph(f"Tipo: {exam.get('exam_type', 'test')}")
         doc.add_paragraph("")
         lines = exam.get("exam_content", exam.get("raw_content", "")).splitlines()
 
@@ -553,8 +553,8 @@ def solve_uploaded_exam(branch: str, file_path: Path, top_k: int = 8) -> dict:
         "### Solución N\n"
         "Respuesta: ...\n"
         "Justificación: ...\n"
-        "Si una pregunta es tipo test, indica opción(es) correctas.\n"
-        "Si es de desarrollo, responde de forma estructurada y breve.\n"
+        "Todas las preguntas son tipo test de respuesta única (A, B, C, D).\n"
+        "En 'Respuesta' devuelve SOLO una letra: A, B, C o D.\n"
         "Si falta información, dilo explícitamente en la justificación.\n\n"
         f"Contexto de apoyo del temario:\n{context_block}\n\n"
         f"Texto del examen a resolver:\n{exam_text}\n\n"
@@ -617,7 +617,7 @@ def start_exam_simulation(branch: str, exam_id: str, duration_minutes: int = 30)
         "questions": [
             {
                 "number": int(q.get("number", i + 1)),
-                "type": str(q.get("type", "desarrollo")),
+                "type": str(q.get("type", "test")),
                 "statement": str(q.get("statement", "")),
                 "options": list(q.get("options", [])),
             }
@@ -633,60 +633,6 @@ def _normalize_choice_letters(text: str) -> set[str]:
 
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
-
-
-def _development_is_correct(expected: str, student: str) -> bool:
-    expected_tokens = set(re.findall(r"[a-záéíóúñ0-9]{4,}", _normalize_text(expected)))
-    student_tokens = set(re.findall(r"[a-záéíóúñ0-9]{4,}", _normalize_text(student)))
-    if not expected_tokens:
-        return False
-    overlap = len(expected_tokens.intersection(student_tokens))
-    ratio = overlap / max(1, len(expected_tokens))
-    return ratio >= 0.35
-
-
-def _llm_grade_development(statement: str, expected: str, student: str) -> tuple[bool, str]:
-    """
-    Use the LLM to grade an open-ended development question.
-    Returns (is_correct, feedback_text).
-    Falls back to keyword heuristic if LLM call fails or returns unrecognisable output.
-    """
-    if not student.strip():
-        return False, "Sin respuesta."
-
-    prompt = (
-        "Eres un corrector de exámenes. Evalúa si la respuesta del alumno es correcta.\n"
-        f"Pregunta: {statement}\n"
-        f"Respuesta esperada (modelo): {expected}\n"
-        f"Respuesta del alumno: {student}\n\n"
-        "Responde SOLO con el formato:\n"
-        "VEREDICTO: CORRECTO o INCORRECTO\n"
-        "FEEDBACK: <una frase corta de retroalimentación>\n"
-    )
-    try:
-        raw = generate_text(prompt, max_tokens=80, temperature=0.0)
-        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        verdict = ""
-        feedback = ""
-        for line in lines:
-            low = line.lower()
-            if low.startswith("veredicto:"):
-                verdict = line.split(":", 1)[1].strip().upper()
-            elif low.startswith("feedback:"):
-                feedback = line.split(":", 1)[1].strip()
-        is_correct = "CORRECTO" in verdict and "INCORRECTO" not in verdict
-        if not feedback:
-            feedback = "Respuesta aceptable." if is_correct else "Revisa los conceptos clave."
-        return is_correct, feedback
-    except Exception:
-        # Fall back to keyword heuristic
-        heuristic = _development_is_correct(expected, student)
-        feedback = (
-            "Respuesta aceptable para desarrollo."
-            if heuristic
-            else "Respuesta incompleta para desarrollo; revisa conceptos clave."
-        )
-        return heuristic, feedback
 
 
 def _question_topic_hint(statement: str) -> str:
@@ -716,7 +662,7 @@ def submit_exam_simulation(branch: str, simulation_id: str, answers: list[dict])
 
     for i, q in enumerate(questions, start=1):
         number = int(q.get("number", i))
-        q_type = str(q.get("type", "desarrollo"))
+        q_type = str(q.get("type", "test"))
         statement = str(q.get("statement", ""))
         expected = str(q.get("answer", "")).strip()
         student = answer_map.get(number, "")
@@ -729,7 +675,7 @@ def submit_exam_simulation(branch: str, simulation_id: str, answers: list[dict])
 
         if not student:
             feedback = "Sin respuesta."
-        elif q_type == "test_simple":
+        else:
             expected_letters = _normalize_choice_letters(expected)
             student_letters = _normalize_choice_letters(student)
             if expected_letters and student_letters:
@@ -737,13 +683,6 @@ def submit_exam_simulation(branch: str, simulation_id: str, answers: list[dict])
             else:
                 correct = _normalize_text(student) == _normalize_text(expected)
             feedback = "Correcta." if correct else "Revisa la opción correcta del temario."
-        elif q_type == "test_multiple":
-            expected_letters = _normalize_choice_letters(expected)
-            student_letters = _normalize_choice_letters(student)
-            correct = bool(expected_letters) and expected_letters == student_letters
-            feedback = "Correcta." if correct else "Te faltan o sobran opciones correctas."
-        else:
-            correct, feedback = _llm_grade_development(statement, expected, student)
 
         if correct:
             correct_count += 1

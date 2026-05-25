@@ -61,7 +61,7 @@ type ChatMessage = {
   createdAt: string;
 };
 
-const MINDORA_PUBLIC_LINK = "https://mindora2026.netlify.app/hecho";
+const MINDORA_PUBLIC_LINK = "https://mindora2026.netlify.app";
 
 type InteractiveExamQuestion = {
   number: number;
@@ -183,7 +183,7 @@ export default function App() {
   const [examDifficulty, setExamDifficulty] = useState("media");
   const [examType] = useState<ExamType>("test");
   const [examCount, setExamCount] = useState(10);
-  const [retrievalDepth, setRetrievalDepth] = useState(6);
+  const [retrievalDepth, setRetrievalDepth] = useState(8);
   const [chatMode, setChatMode] = useState<ResponseStyle>("auto");
   const [codeInstruction, setCodeInstruction] = useState("Explica qué hace este código y cómo mejorarlo.");
   const [codeSnippet, setCodeSnippet] = useState("");
@@ -1358,9 +1358,9 @@ export default function App() {
                   disabled={chatMode === "codigo"}
                 >
                   <option value={4}>🔍 Búsqueda rápida</option>
-                  <option value={6}>🔍 Búsqueda equilibrada</option>
-                  <option value={8}>🔍 Búsqueda profunda</option>
-                  <option value={10}>🔍 Búsqueda máxima</option>
+                  <option value={8}>🔍 Búsqueda equilibrada</option>
+                  <option value={10}>🔍 Búsqueda profunda</option>
+                  <option value={12}>🔍 Búsqueda máxima</option>
                 </select>
               </div>
             </div>
