@@ -50,15 +50,23 @@ def _model() -> str:
 
 def _style_rules(response_style: ResponseStyle) -> str:
     rules: dict[ResponseStyle, str] = {
-        "auto": "Responde de forma clara y estructurada en 2-4 párrafos, con viñetas si ayuda.",
-        "corta": "Respuesta breve: máximo 6 líneas y una mini conclusión.",
-        "detallada": "Respuesta completa: contexto, desarrollo, ejemplo y cierre.",
-        "pasos": "Responde en pasos numerados, del más básico al más práctico.",
-        "detallada_pasos": "Respuesta larga organizada en pasos con explicaciones de cada paso.",
-        "examen": "Formato examen: definición, puntos clave y cierre evaluable.",
-        "profesor": "Tono docente: explicación clara, ejemplo guiado y pregunta de comprobación.",
-        "companero": "Tono cercano, sencillo y directo, sin perder precisión.",
-        "codigo": "Devuelve explicación técnica y, si procede, bloque de código corregido o mejorado.",
+        "auto": "Responde de forma clara y estructurada en 3-5 párrafos, con viñetas solo si realmente ayudan a la claridad. "
+                "Inicia con una idea principal, desarrolla con ejemplos y cierra con síntesis.",
+        "corta": "Respuesta concisa pero completa: máximo 5-6 líneas. Dicho directo, sin rodeos, pero manteniendo precisión.",
+        "detallada": "Respuesta exhaustiva: introducción, contexto histórico/conceptual, desarrollo profundo con ejemplos concretos, "
+                    "implicaciones, y conclusión educativa. Mínimo 4-5 párrafos bien desarrollados.",
+        "pasos": "Estructura en pasos numerados progresivos, de lo más básico a lo más avanzado. Cada paso con explicación clara "
+                "y transición natural al siguiente.",
+        "detallada_pasos": "Respuesta extensa dividida en secciones numeradas. Cada sección: teoría, ejemplo, y aplicación. "
+                          "Mínimo 6-8 pasos con profundidad académica.",
+        "examen": "Formato tipo pregunta de examen: (1) Definición exacta, (2) Puntos clave diferenciados, (3) Ejemplos distintos, "
+                 "(4) Conclusión evaluable. Usa bullet points para claridad.",
+        "profesor": "Tono socrático y docente: explica el 'qué' y el 'por qué', proporciona ejemplo guiado paso a paso, "
+                   "y termina con una pregunta reflexiva para el estudiante.",
+        "companero": "Tono conversacional pero riguroso: como si un compañero experto te lo explicara directamente. Natural, "
+                    "sencillo, sin ser superficial. Personaje amable y accesible.",
+        "codigo": "Respuesta técnica con bloque de código si es necesario. Explicación clara + implementación + casos de uso + "
+                 "notas de seguridad o performance.",
     }
     return rules.get(response_style, rules["auto"])
 
@@ -176,37 +184,49 @@ def generate_answer_langchain(
         model=_model(),
         base_url=_base_url(),
         api_key=_api_key(),
-        temperature=float(os.getenv("IA_LOCAL_LLM_TEMPERATURE", "0.05")),
-        max_tokens=int(os.getenv("IA_LOCAL_LLM_MAX_TOKENS", "850")),
+        temperature=float(os.getenv("IA_LOCAL_LLM_TEMPERATURE", "0.3")),
+        top_p=float(os.getenv("IA_LOCAL_LLM_TOP_P", "0.85")),
+        max_tokens=int(os.getenv("IA_LOCAL_LLM_MAX_TOKENS", "1200")),
     )
 
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                "Eres MINDORA, asistente educativo offline especializado en ofrecer respuestas precisas y académicamente rigurosas. "
-                "REGLAS CRÍTICAS:\n"
-                "1. Usa ÚNICAMENTE la información del CONTEXTO recuperado. No inventes, no especules.\n"
-                "2. Si el contexto no tiene suficiente información, dilo explícitamente.\n"
-                "3. Sé muy específico: cita conceptos, definiciones exactas y fuentes del contexto.\n"
-                "4. Estructura lógicamente: primero lo fundamental, luego detalles, al final aplicación.\n"
-                "5. Evita respuestas genéricas o superficiales - profundiza en los conceptos.\n"
-                "6. Usa ejemplos concretos del contexto cuando sea posible.\n"
-                "7. Distingue entre definiciones académicas, procedimientos, e interpretaciones.",
+                "Eres MINDORA, asistente educativo offline de alto nivel especializado en explicaciones precisas, "
+                "coherentes y de calidad profesional. Tu objetivo es replicar la consistencia y claridad de un chatbot "
+                "educativo de primera categoría.\n\n"
+                "PRINCIPIOS DE CALIDAD:\n"
+                "• Coherencia: Cada respuesta fluye lógicamente de principio a fin sin contradicciones.\n"
+                "• Profundidad: No superficial; explora causas, consecuencias, conexiones entre conceptos.\n"
+                "• Precisión: Usa terminología exacta y referencias concretas del contexto.\n"
+                "• Estructura: Intro clara → desarrollo → conclusión o aplicación.\n"
+                "• Tono: Profesional, accesible, nunca patronizante.\n\n"
+                "REGLAS DE CONTENIDO:\n"
+                "1. CONTEXTO ES VERDAD: Usa ÚNICAMENTE información del contexto. Nunca inventes ni especules.\n"
+                "2. EXPLICITACIÓN: Si falta información, dilo claramente sin excusas falsas.\n"
+                "3. EJEMPLOS: Incluye ejemplos concretos del contexto para ilustrar conceptos.\n"
+                "4. TRANSICIONES: Conecta ideas con frases transicionales (por lo tanto, de esta manera, esto implica).\n"
+                "5. RIGOR: Distingue entre definiciones, procedimientos, teoría y práctica.\n"
+                "6. CITAS: Referencia las fuentes del contexto de forma natural en el texto.\n"
+                "7. EVITA REPETICIÓN: No repitas la misma idea con diferentes palabras.",
             ),
             (
                 "human",
-                "ESTILO DE RESPUESTA:\n{style_rules}\n\n"
-                "EVIDENCIA PRIORIZADA:\n{evidence_digest}\n\n"
-                "CONTEXTO FIABLE:\n{context}\n\n"
-                "HISTORIAL (para continuidad):\n{history}\n\n"
-                "PREGUNTA DEL USUARIO:\n{question}\n\n"
-                "Instrucciones finales:\n"
-                "- Responde basándote únicamente en el contexto.\n"
-                "- Si necesitas aclarar algo del contexto, hazlo.\n"
-                "- Estructura con claridad: resumen breve, puntos clave y cierre.\n"
-                "- Cita al final 2-4 referencias de evidencia usando formato [FUENTE n].\n"
-                "- Omite rodeos innecesarios y evita repetir frases."
+                "INSTRUCCIONES ESPECÍFICAS:\n"
+                "Estilo solicitado: {style_rules}\n\n"
+                "CONTEXTO PRINCIPAL:\n{context}\n\n"
+                "EVIDENCIA CLAVE (prioriza esto):\n{evidence_digest}\n\n"
+                "CONVERSACIÓN ANTERIOR (para continuidad):\n{history}\n\n"
+                "PREGUNTA:\n{question}\n\n"
+                "DIRECTIVAS DE EJECUCIÓN:\n"
+                "1. Lee la pregunta y el historial para entender el contexto conversacional.\n"
+                "2. Identifica la idea principal que debes comunicar basándote en el contexto.\n"
+                "3. Estructura tu respuesta: apertura → cuerpo bien desarrollado → cierre.\n"
+                "4. Asegúrate de que cada oración añade valor; evita relleno.\n"
+                "5. Usa conectores lógicos (sin embargo, además, en consecuencia) para fluidez.\n"
+                "6. Si citas fuentes, hazlo de forma orgánica: 'Como menciona [FUENTE], ...'.\n"
+                "7. Al final, resume brevemente los puntos clave en 1-2 líneas."
             ),
         ]
     )
